@@ -36,6 +36,16 @@ Untuk mencabut akses agent tanpa mengganggu akses Rafee, hapus baris `ops-agent@
 
 Menambah laptop baru: buat key di laptop itu (`ssh-keygen -t ed25519`), lalu dari sesi yang sudah masuk tambahkan isi `.pub`-nya ke `~/.ssh/authorized_keys` user yang bersangkutan. Jangan menyalin private key antar mesin.
 
+### Untuk coding agent
+
+Session agent baru yang mengurus infra cukup membaca dokumen ini, lalu memakai alias `thya-ops`:
+
+- Akses: `ssh thya-ops '<perintah>'`. Ini user `ubuntu` dengan sudo tanpa password; jalankan perintah admin dengan `sudo -n`. Key `~/.ssh/thya_ops` sudah ada di ssh-agent macOS, jadi pakai `-o BatchMode=yes`. Kalau login minta passphrase, berhenti dan minta Rafee menjalankan `ssh-add --apple-use-keychain ~/.ssh/thya_ops`.
+- Banyak perintah beruntun: buka satu koneksi master (`ssh -M -S ~/.ssh/cm/thya-ops -o ControlPersist=2h -fN thya-ops`, lalu `ssh -S ~/.ssh/cm/thya-ops thya-ops ...`), supaya tidak kena `ufw limit` (6 koneksi/30 detik). Path socket harus pendek.
+- Dashboard Dokploy (`deploy.sayyidrafee.com`) milik Rafee. Agent tidak login ke sana; perubahan di UI (aplikasi, env, domain, backup) dipandu ke Rafee, lalu diverifikasi agent dari server (`docker service ls/ps/logs`, `/etc/dokploy/traefik/dynamic/`) dan dari luar (`curl`, `openssl s_client`).
+- Repo: GitHub `sayyidrafeed/thya` lewat `gh` yang sudah login. Variable repo boleh diubah agent; secret (`DOKPLOY_*_WEBHOOK_URL`) diisi Rafee dengan `gh secret set`.
+- Batasan: agent tidak mengetik, mencetak, atau menyimpan password, token, private key, atau isi env. Cek env cukup dengan nama variabel atau panjangnya. Konfirmasi dulu ke Rafee sebelum mengubah sshd, firewall, atau Swarm, menghapus volume/data, atau reinstall. Sebelum menutup akses lama, pastikan sesi SSH baru bisa masuk. Jangan sentuh agent Tencent, dan jangan scan host selain VPS ini.
+
 ### Web Console (jalur darurat)
 
 Tombol **Web Console** di panel Sumopod membuka konsol VNC (`tty1`). Jalurnya tidak lewat SSH, jadi tetap bisa dipakai saat SSH terkunci atau sshd rusak. Login dengan user `ubuntu` dan password di tab **Access** panel, atau user `rafee` dengan password sudo-nya. **Reset Password** di panel mengganti password `ubuntu`.
