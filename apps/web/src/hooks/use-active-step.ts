@@ -2,7 +2,8 @@
 
 import { type RefObject, useEffect, useState } from "react";
 
-// The step whose block crosses the middle band of the viewport is the active one.
+// The step whose block crosses the reading band is the active one. The band sits below the middle
+// because on phones the chat is pinned over the top half of the screen.
 export function useActiveStep(listRef: RefObject<HTMLElement | null>) {
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -17,7 +18,7 @@ export function useActiveStep(listRef: RefObject<HTMLElement | null>) {
           if (entry.isIntersecting) setActiveIndex(items.indexOf(entry.target));
         }
       },
-      { rootMargin: "-45% 0px -45% 0px" },
+      { rootMargin: "-62% 0px -33% 0px" },
     );
 
     for (const item of items) observer.observe(item);

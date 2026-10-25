@@ -23,13 +23,24 @@ export function UserBubble({ text }: { text: string }) {
   );
 }
 
+// Thya's reply pops in like any bubble, then its words stagger in like a reply being written.
+const reply = {
+  hidden: enter.initial,
+  shown: {
+    ...enter.animate,
+    transition: { ...enter.transition, delayChildren: 0.12, staggerChildren: 0.018 },
+  },
+};
+
 export function ThyaBubble({ text }: { text: string }) {
   return (
     <m.div
-      {...enter}
+      variants={reply}
+      initial="hidden"
+      animate="shown"
       className="max-w-[92%] origin-bottom-left rounded-bubble rounded-tl-sm bg-bubble-in px-3 py-2 text-ink tabular-nums shadow-card"
     >
-      <ChatText text={text} />
+      <ChatText text={text} stream />
     </m.div>
   );
 }
