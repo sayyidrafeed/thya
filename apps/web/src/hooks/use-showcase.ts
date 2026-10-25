@@ -10,11 +10,12 @@ export type ThreadEntry = { key: number; scene: number; shown: number; typing: b
 
 const keep = 2;
 
-// Rafee's cadence: a new scene every 2.2 s; a longer scene gets just enough time to finish.
-const cycleMs = 2200;
-const afterLastStepMs = 500;
+// The team found 2.2 s too fast to read (2026-10-25): each scene now holds its answer on screen for
+// 3.5 s before the next one starts, and never cycles faster than every 4.5 s.
+const cycleMs = 4500;
+const afterLastStepMs = 3500;
 
-// Plays the hero scenes as one running chat on a 2.2 s cadence. Picking a scene jumps to it and restarts
+// Plays the hero scenes as one running chat on a reading-paced cadence. Picking a scene jumps to it and restarts
 // the timer. Reduced motion shows whole scenes and never advances.
 export function useShowcase(scenes: readonly Scene[]) {
   const reduceMotion = useReducedMotion() === true;

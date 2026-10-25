@@ -24,7 +24,6 @@ const appPlacement = [
   "top-[44%] right-[6%]",
   "bottom-[12%] right-[16%]",
   "bottom-[10%] left-[14%]",
-  "top-[44%] left-[5%]",
 ] as const;
 
 // The mascot breathes in a soft panel, surrounded by the apps it reads the shop's numbers from.

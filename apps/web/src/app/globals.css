@@ -40,14 +40,11 @@
   --color-titanium-edge: #a8a399;
 
   /* Brand colours of the shop apps (Simple Icons). Decorative tiles only, never text. */
-  --color-app-gofood: #00aa13;
-  --color-app-grabfood: #00b14f;
-  --color-app-shopeefood: #ee4d2d;
   --color-app-whatsapp: #25d366;
   --color-app-sheets: #34a853;
   --color-app-gmail: #ea4335;
-  --color-app-instagram: #ff0069;
-  --color-app-tiktok: #000000;
+  /* QRIS has no brand glyph we can use; its tile is the national standard's red. */
+  --color-app-qris: #e2231a;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;

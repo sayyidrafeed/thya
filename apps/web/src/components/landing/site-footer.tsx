@@ -7,15 +7,16 @@ const columns = [
     items: [
       { label: "Meet Thya", href: "#meet-thya" },
       { label: "How it works", href: "#how-it-works" },
+      { label: "Playground", href: "#playground" },
       { label: "FAQ", href: "#faq" },
     ],
   },
   {
     title: "Team",
     items: [
-      { label: "Indy · Product Owner" },
-      { label: "Nawra · Business Analyst" },
-      { label: "Rafee · AI Engineer" },
+      { label: "Indy · Product Owner", href: "https://www.linkedin.com/in/indy-agustin/" },
+      { label: "Nawra · Business Analyst", href: "https://www.linkedin.com/in/nawra-illona/" },
+      { label: "Rafee · AI Engineer", href: "https://www.linkedin.com/in/m-sayyid-rafee-djamil/" },
     ],
   },
   {

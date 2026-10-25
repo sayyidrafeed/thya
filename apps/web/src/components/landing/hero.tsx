@@ -31,7 +31,7 @@ export function Hero() {
           href="https://developerday.id"
           target="_blank"
           rel="noreferrer"
-          className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 rounded-control px-2 py-1 text-caption text-ink-muted transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 rounded-control px-2 py-1 text-caption text-ink-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           <span className="flex items-center gap-2.5 whitespace-nowrap">
             Participating in

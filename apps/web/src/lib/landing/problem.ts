@@ -9,8 +9,13 @@ export const problemHeading = {
 
 export const sources = {
   title: "Where the numbers live",
-  apps: ["gofood", "grabfood", "shopeefood", "whatsapp", "sheets"] as const,
-  others: ["Cashier app", "Notebook"] as const,
+  tiles: [
+    { app: "qris", label: "QRIS payments" },
+    { app: "whatsapp", label: "WhatsApp orders" },
+    { app: "sheets", label: "Google Sheets" },
+    { app: "notebook", label: "Notebook" },
+  ] as const,
+  others: ["Cashier app"] as const,
   more: "Receipts & more",
   ledger: {
     top: "Sales records",

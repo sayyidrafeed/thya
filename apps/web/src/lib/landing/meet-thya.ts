@@ -14,7 +14,7 @@ export const thyaTraits = [
   {
     id: "apps",
     title: "Works with your apps",
-    body: "GoFood, GrabFood, ShopeeFood, WhatsApp and Google Sheets.",
+    body: "WhatsApp, Google Sheets, Gmail and your QRIS payment screenshots.",
   },
   {
     id: "numbers",
@@ -38,12 +38,6 @@ export const thyaTraits = [
   },
 ] as const;
 
-// App tiles floating around the mascot: where a food shop's numbers already live.
-export const mascotApps = [
-  "gofood",
-  "grabfood",
-  "shopeefood",
-  "whatsapp",
-  "sheets",
-  "gmail",
-] as const;
+// Tiles floating around the mascot: only places Thya reads from or writes to in the final build
+// (business-features-plan S5–S7, S9). Delivery apps were dropped: there is no data path to them.
+export const mascotApps = ["whatsapp", "sheets", "qris", "gmail", "notebook"] as const;

@@ -1,17 +1,16 @@
-import { Calculator, ChevronRight, NotebookPen, Plus } from "lucide-react";
+import { Calculator, ChevronRight, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Wire } from "@/components/landing/flow-connector";
 import { AppIcon } from "@/components/ui/app-icon";
-import { shopApps } from "@/lib/landing/shop-apps";
 import { sources } from "@/lib/landing/problem";
 
-const otherIcons = { "Cashier app": Calculator, Notebook: NotebookPen } as const;
+const otherIcons = { "Cashier app": Calculator } as const;
 
 const pills: { label: string; icon: ReactNode }[] = [
-  ...sources.apps.map((app) => ({
-    label: shopApps[app].name,
-    icon: <AppIcon app={app} size="sm" />,
+  ...sources.tiles.map((tile) => ({
+    label: tile.label,
+    icon: <AppIcon app={tile.app} size="sm" />,
   })),
   ...sources.others.map((label) => {
     const Icon = otherIcons[label];
