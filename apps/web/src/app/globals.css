@@ -32,13 +32,6 @@
   --color-bubble-in: #ffffff;
   --color-bubble-out: #d9fdd3;
 
-  /* Footer landscape, a misty morning over green hills (cooldock reference). Decorative only. */
-  --color-sky: #eef0e8;
-  --color-hill-far: #cdd9c8;
-  --color-hill-mid: #a7bfa2;
-  --color-hill-near: #7b9c7d;
-  --color-hill-front: #557a5d;
-
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
