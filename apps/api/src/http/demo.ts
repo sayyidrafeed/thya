@@ -12,7 +12,6 @@ import { withTrace } from "../trace";
 
 const MAX_HISTORY_MESSAGES = 20;
 
-
 // The web demo sends its whole history each request (nothing is stored for it) and runs the same
 // turn as WhatsApp, on the seeded demo business in Postgres.
 async function runDemoTurn(
