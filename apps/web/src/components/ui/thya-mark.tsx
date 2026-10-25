@@ -5,6 +5,7 @@ const sizes = {
   sm: { width: 23, height: 28, className: "h-7 w-auto" },
   md: { width: 29, height: 36, className: "h-9 w-auto" },
   lg: { width: 39, height: 48, className: "h-12 w-auto" },
+  xl: { width: 194, height: 240, className: "h-48 w-auto md:h-60" },
 } as const;
 
 export function ThyaMark({ size = "sm" }: { size?: keyof typeof sizes }) {

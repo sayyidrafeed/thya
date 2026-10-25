@@ -1,49 +1,64 @@
-// Every ask and reply is copied from a real /demo/chat exchange in mockup-conversations.ts.
+// Meet Thya introduces the character, not the mechanics (those live in How it works).
+// Glossary meanings and examples come from real /demo/chat answers in mockup-conversations.ts.
 
-export type ThyaTrait = {
-  id: string;
-  title: string;
-  body: string;
-  ask: string;
-  reply: string;
-};
+export const meetThya = {
+  heading: "Meet Thya.",
+  lead: "The one on your team who's good with numbers. Ask about the shop the way you'd ask a coworker, in everyday Indonesian.",
+  glossaryHeading: "Thya speaks shop, not finance.",
+  glossaryLead:
+    "Every answer names the term and says what it means, so a busy owner never has to guess.",
+} as const;
 
 export const thyaTraits = [
   {
     id: "language",
     title: "Talks like you do",
-    body: "Ask in everyday Indonesian. No menus, no report builder, no formulas.",
-    ask: "Menu apa yang kurang laku bulan ini?",
-    reply: "Croissant Butter paling sedikit terjual sekaligus marginnya paling tipis.",
+    body: "Everyday Indonesian in, plain answers out.",
   },
   {
     id: "numbers",
-    title: "Your numbers, not guesses",
-    body: "Every figure is calculated from your sales records. The AI only writes the sentence around it.",
-    ask: "Omzet kemarin berapa?",
-    reply: "Omzet kemarin *Rp4.100.000*, naik *+25,8%* dibanding sehari sebelumnya.",
+    title: "Numbers from your records",
+    body: "Figures are calculated, never guessed by the AI.",
   },
   {
     id: "explains",
-    title: "Explains as it answers",
-    body: "Business terms come with a plain meaning, so revenue never gets mistaken for profit.",
-    ask: "Omzet kemarin berapa?",
-    reply: "Omzet itu semua uang masuk dari jualan, belum dipotong modal bahan.",
+    title: "Explains the terms",
+    body: "Revenue is never mistaken for profit.",
   },
   {
     id: "next-step",
     title: "Suggests a next step",
-    body: "An answer ends with something you can try at the counter tomorrow.",
-    ask: "Menu apa yang paling laku minggu ini?",
-    reply: "Saran: coba paket bundling Es Kopi Susu + Pisang Goreng biar nilai transaksi naik.",
+    body: "Most answers end with something to try tomorrow.",
   },
   {
     id: "local",
     title: "Built in Indonesia",
-    body: "Made for Indonesian shops, on a .id domain, with the language model running on servers in Indonesia.",
-    ask: "Margin bulan lalu gimana?",
-    reply: "Artinya dari tiap Rp100.000 jualan, sekitar Rp60.500 tersisa setelah modal bahan.",
+    body: "On a .id domain, with the model running in Indonesia.",
   },
-] as const satisfies readonly ThyaTrait[];
+] as const;
 
-export const meetThyaHeading = "Thya, in its own words.";
+// Words floating around the mascot: the shop words Thya answers about.
+export const shopWords = ["omzet", "menu laris", "margin", "modal bahan", "menu sepi"] as const;
+
+export const glossary = [
+  {
+    term: "Omzet",
+    meaning: "Revenue: every rupiah that came in from sales, before ingredient costs.",
+    example: "Omzet itu semua uang masuk dari jualan, belum dipotong modal bahan.",
+  },
+  {
+    term: "Margin kotor",
+    meaning: "Gross margin: the share of sales left after ingredient costs.",
+    example: "Dari tiap Rp100.000 jualan, sekitar Rp60.500 tersisa setelah modal bahan.",
+  },
+  {
+    term: "Menu terlaris",
+    meaning: "Best sellers: what sold the most in a period, with its revenue and margin.",
+    example: "Es Kopi Susu Gula Aren: 290 terjual minggu ini.",
+  },
+  {
+    term: "Menu sepi",
+    meaning: "Slow movers: what barely sells, often with a thin margin too.",
+    example: "Croissant Butter paling sedikit terjual sekaligus marginnya paling tipis.",
+  },
+] as const;

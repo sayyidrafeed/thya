@@ -2,14 +2,12 @@
 
 import { useState } from "react";
 
-import { MeetThyaCarousel } from "@/components/landing/meet-thya-carousel";
-import { MeetThyaSpotlight } from "@/components/landing/meet-thya-spotlight";
-import { SectionHeading } from "@/components/landing/section-heading";
-import { meetThyaHeading } from "@/lib/landing/meet-thya";
+import { MeetThyaCharacter } from "@/components/landing/meet-thya-character";
+import { MeetThyaGlossary } from "@/components/landing/meet-thya-glossary";
 
 const variants = [
-  { id: "carousel", label: "Carousel", Layout: MeetThyaCarousel },
-  { id: "spotlight", label: "Spotlight", Layout: MeetThyaSpotlight },
+  { id: "character", label: "Character", Layout: MeetThyaCharacter },
+  { id: "glossary", label: "Shop words", Layout: MeetThyaGlossary },
 ] as const;
 
 // The A/B switcher is for the team review; keep one layout and drop the switcher once picked.
@@ -23,12 +21,7 @@ export function MeetThya() {
       aria-labelledby="meet-thya-title"
       className="flex scroll-mt-20 flex-col gap-10 overflow-hidden py-section"
     >
-      <div className="mx-auto flex w-full max-w-page flex-wrap items-end justify-between gap-6 px-4 sm:px-6">
-        <SectionHeading
-          align="start"
-          eyebrow="Meet Thya"
-          title={<span id="meet-thya-title">{meetThyaHeading}</span>}
-        />
+      <div className="mx-auto flex w-full max-w-page justify-end px-4 sm:px-6">
         <fieldset className="flex gap-1 rounded-control border-0 glass p-1">
           <legend className="sr-only">Meet Thya layout</legend>
           {variants.map((variant, index) => (
