@@ -32,6 +32,13 @@
   --color-bubble-in: #ffffff;
   --color-bubble-out: #d9fdd3;
 
+  /* Footer landscape, a misty morning over green hills (cooldock reference). Decorative only. */
+  --color-sky: #eef0e8;
+  --color-hill-far: #cdd9c8;
+  --color-hill-mid: #a7bfa2;
+  --color-hill-near: #7b9c7d;
+  --color-hill-front: #557a5d;
+
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
@@ -57,6 +64,16 @@
   --text-body--line-height: 1.6;
   --text-caption: 0.8125rem;
   --text-caption--line-height: 1.45;
+  /* Giant footer wordmark. */
+  --text-wordmark: 7.5rem;
+  --text-wordmark--line-height: 0.8;
+  --text-wordmark--letter-spacing: -0.06em;
+  --text-wordmark-md: 15rem;
+  --text-wordmark-md--line-height: 0.8;
+  --text-wordmark-md--letter-spacing: -0.06em;
+  --text-wordmark-xl: 24rem;
+  --text-wordmark-xl--line-height: 0.8;
+  --text-wordmark-xl--letter-spacing: -0.06em;
   /* Mono labels such as "01 · Ask". */
   --text-label: 0.75rem;
   --text-label--line-height: 1.4;
@@ -80,18 +97,52 @@
   /* Depth */
   --shadow-card: 0 1px 2px rgb(23 21 15 / 0.06);
   --shadow-phone: 0 30px 60px -24px rgb(23 21 15 / 0.35);
+  /* Glass chrome, from glassyui: hairline ring, light top edge, soft drop. */
+  --shadow-glass:
+    inset 0 0 0 0.5px rgb(23 21 15 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.9),
+    0 1px 2px rgb(23 21 15 / 0.06), 0 12px 32px -10px rgb(23 21 15 / 0.18);
 
   /* Layout */
   --container-page: 72rem;
   --container-phone: 20.5rem;
   --container-prose: 40rem;
   --spacing-section: 7rem;
+  /* Side padding that lines a full-bleed scroller up with the page container. */
+  --spacing-gutter: max(1rem, calc((100vw - 72rem) / 2 + 1.5rem));
   /* Fixed chat viewport so switching use cases never changes the phone's height. */
   --spacing-chat: 29rem;
   --aspect-phone: 9 / 19;
 
   /* Motion */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Dashes travelling along the problem diagram's connectors. */
+  --animate-dash-flow: dash-flow 1.2s linear infinite;
+
+  @keyframes dash-flow {
+    to {
+      stroke-dashoffset: -16;
+    }
+  }
+}
+
+/* Frosted chrome (navbar, carousel controls). Solid when the visitor asks for less transparency. */
+@utility glass {
+  background-color: rgb(255 255 255 / 0.72);
+  backdrop-filter: blur(16px) saturate(1.8) brightness(1.04);
+  box-shadow: var(--shadow-glass);
+
+  @media (prefers-reduced-transparency: reduce) {
+    background-color: var(--color-surface-raised);
+    backdrop-filter: none;
+  }
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @layer base {

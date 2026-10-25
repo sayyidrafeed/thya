@@ -40,13 +40,4 @@ export const thyaTraits = [
   },
 ] as const satisfies readonly ThyaTrait[];
 
-export const featuredFigure = {
-  value: "Rp4.100.000",
-  caption: "Kopi Senja's revenue yesterday, from one question.",
-} as const;
-
-export const meetThyaHeading = {
-  bento: "Meet Thya, the one on your team who's good with numbers.",
-  rows: "Thya is a chat, not another app to learn.",
-  quotes: "Thya, in its own words.",
-} as const;
+export const meetThyaHeading = { quotes: "Thya, in its own words." } as const;

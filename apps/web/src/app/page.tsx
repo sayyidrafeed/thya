@@ -1,3 +1,4 @@
+import { DeveloperDayCta } from "@/components/landing/developerday-cta";
 import { Faq } from "@/components/landing/faq";
 import { Hero } from "@/components/landing/hero";
 import { HowItWorks } from "@/components/landing/how-it-works";
@@ -12,12 +13,13 @@ export default function HomePage() {
     <MotionProvider>
       <div id="top" className="min-h-dvh">
         <SiteHeader />
-        <main>
+        <main className="pt-16">
           <Hero />
           <MeetThya />
           <Problem />
           <HowItWorks />
           <Faq />
+          <DeveloperDayCta />
         </main>
         <SiteFooter />
       </div>

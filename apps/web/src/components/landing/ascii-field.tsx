@@ -3,11 +3,12 @@
 import { useRef } from "react";
 
 import { useAsciiField } from "@/hooks/use-ascii-field";
+import type { AsciiPattern } from "@/lib/ascii/flow-field";
 
-export function AsciiField() {
+export function AsciiField({ pattern }: { pattern: AsciiPattern }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useAsciiField(canvasRef);
+  useAsciiField(canvasRef, pattern.intensity);
 
   return (
     <canvas

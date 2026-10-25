@@ -2,7 +2,7 @@
 
 import { type RefObject, useEffect } from "react";
 
-import { asciiCell, asciiGlyphs, flowIntensity, glyphLevel } from "@/lib/ascii/flow-field";
+import { type AsciiPattern, asciiCell, asciiGlyphs, glyphLevel } from "@/lib/ascii/flow-field";
 
 const stepMs = 1000 / 15;
 
@@ -10,8 +10,11 @@ function brandColor(canvas: HTMLCanvasElement) {
   return getComputedStyle(canvas).getPropertyValue("--color-brand").trim();
 }
 
-// Draws the footer's ASCII flow on a canvas: 15 fps, paused off-screen, one still frame for reduced motion.
-export function useAsciiField(canvasRef: RefObject<HTMLCanvasElement | null>) {
+// Draws an ASCII pattern on a canvas: 15 fps, paused off-screen, one still frame for reduced motion.
+export function useAsciiField(
+  canvasRef: RefObject<HTMLCanvasElement | null>,
+  intensity: AsciiPattern["intensity"],
+) {
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -32,7 +35,7 @@ export function useAsciiField(canvasRef: RefObject<HTMLCanvasElement | null>) {
 
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
-          const level = glyphLevel(flowIntensity(col, row, seconds));
+          const level = glyphLevel(intensity(col, row, seconds, { cols, rows }));
 
           if (level === 0) continue;
 
@@ -90,5 +93,5 @@ export function useAsciiField(canvasRef: RefObject<HTMLCanvasElement | null>) {
       onScreen.disconnect();
       document.removeEventListener("visibilitychange", resume);
     };
-  }, [canvasRef]);
+  }, [canvasRef, intensity]);
 }
