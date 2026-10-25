@@ -1,0 +1,24 @@
+{
+  "name": "@thya/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/server.ts",
+    "start": "bun --env-file=../../.env src/server.ts",
+    "worker": "bun --env-file=../../.env src/worker.ts",
+    "build": "bun build src/server.ts src/worker.ts --target bun --outdir dist",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "verify:netra": "bun --env-file=../../.env scripts/verify-netra-tools.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.78",
+    "ai": "^7.0.153",
+    "elysia": "^1.4.30",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}
