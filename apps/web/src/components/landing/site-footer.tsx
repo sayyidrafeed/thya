@@ -33,8 +33,8 @@ const linkClass =
 export function SiteFooter() {
   return (
     <footer className="relative isolate overflow-hidden border-t border-line">
-      <div className="mx-auto grid w-full max-w-page gap-10 px-4 pt-16 pb-8 sm:px-6 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
-        <div className="flex max-w-xs flex-col gap-3">
+      <div className="mx-auto grid w-full max-w-page grid-cols-2 gap-x-6 gap-y-10 px-4 pt-16 pb-8 sm:px-6 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
+        <div className="col-span-2 flex max-w-xs flex-col gap-3 md:col-span-1">
           <p className="flex items-center gap-2 text-title font-semibold">
             <ThyaMark size="md" />
             Thya
@@ -49,9 +49,9 @@ export function SiteFooter() {
         {columns.map((column) => (
           <div key={column.title}>
             <h2 className="text-caption font-semibold">{column.title}</h2>
-            <ul className="mt-3 flex flex-col gap-2 text-caption text-ink-muted">
+            <ul className="mt-2 flex flex-col text-caption text-ink-muted md:mt-3 md:gap-2">
               {column.items.map((item) => (
-                <li key={item.label}>
+                <li key={item.label} className="flex min-h-11 items-center md:min-h-0">
                   {"href" in item ? (
                     <a
                       href={item.href}

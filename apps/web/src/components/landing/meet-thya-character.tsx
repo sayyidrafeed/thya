@@ -47,14 +47,14 @@ export function MeetThyaCharacter() {
           </m.span>
         ))}
       </div>
-      <div className="flex flex-col gap-8">
+      <div className="order-first flex flex-col gap-8 md:order-none">
         <SectionHeading
           align="start"
           eyebrow="Meet Thya"
           title={<span id="meet-thya-title">{meetThya.heading}</span>}
           lead={meetThya.lead}
         />
-        <ul className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
           {thyaTraits.map((trait) => {
             const Icon = traitIcon[trait.id];
 

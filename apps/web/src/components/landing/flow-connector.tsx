@@ -39,17 +39,17 @@ function Wire({ vertical, delay }: { vertical: boolean; delay: number }) {
 // Dashed wire with a travelling pulse and a label; horizontal from md up, vertical below.
 export function FlowConnector({ label, delay = 0 }: { label: string; delay?: number }) {
   return (
-    <div aria-hidden="true" className="relative flex h-16 items-center justify-center md:h-auto">
-      <svg className="absolute inset-0 size-full overflow-visible md:hidden">
+    <div aria-hidden="true" className="relative flex h-16 items-center justify-center lg:h-auto">
+      <svg className="absolute inset-0 size-full overflow-visible lg:hidden">
         <Wire vertical delay={delay} />
       </svg>
-      <svg className="absolute inset-0 hidden size-full overflow-visible md:block">
+      <svg className="absolute inset-0 hidden size-full overflow-visible lg:block">
         <Wire vertical={false} delay={delay} />
       </svg>
       <span className="relative flex items-center gap-1 rounded-control border border-line bg-surface px-2.5 py-1 font-mono text-label text-ink-muted">
         {label}
-        <ChevronDown className="size-3 md:hidden" />
-        <ChevronRight className="hidden size-3 md:block" />
+        <ChevronDown className="size-3 lg:hidden" />
+        <ChevronRight className="hidden size-3 lg:block" />
       </span>
     </div>
   );

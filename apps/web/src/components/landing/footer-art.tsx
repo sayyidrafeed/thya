@@ -26,7 +26,7 @@ export function FooterArt() {
   const art = footerArts[artIndex] ?? footerArts[0];
 
   return (
-    <div className="relative isolate h-96 overflow-hidden md:h-[30rem]">
+    <div className="relative isolate h-72 overflow-hidden md:h-[30rem]">
       <FibreCanvas key={art.id} build={art.build} />
       <span className="absolute top-1/2 left-1/2 grid size-20 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full glass">
         <ThyaMark size="lg" />

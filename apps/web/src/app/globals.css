@@ -104,7 +104,8 @@
   --container-page: 72rem;
   --container-phone: 20.5rem;
   --container-prose: 40rem;
-  --spacing-section: 7rem;
+  /* Section rhythm: 4.5rem on phones, 7rem from md up (raised in :root below). */
+  --spacing-section: 4.5rem;
   /* Side padding that lines a full-bleed scroller up with the page container. */
   --spacing-gutter: max(1rem, calc((100vw - 72rem) / 2 + 1.5rem));
   /* Fixed chat viewport so switching use cases never changes the phone's height. */
@@ -138,6 +139,12 @@
 @layer base {
   :root {
     color-scheme: light;
+  }
+
+  @media (width >= 48rem) {
+    :root {
+      --spacing-section: 7rem;
+    }
   }
 
   html {

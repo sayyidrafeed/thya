@@ -31,17 +31,19 @@ export function Hero() {
           href="https://developerday.id"
           target="_blank"
           rel="noreferrer"
-          className="flex items-center gap-2.5 rounded-control px-2 py-1 text-caption text-ink-muted transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 rounded-control px-2 py-1 text-caption text-ink-muted transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
-          Participating in
-          <Image
-            src="/brand/developerday-wordmark.webp"
-            alt="developerday.id"
-            width={732}
-            height={96}
-            className="h-4 w-auto"
-          />
-          <span>2026 · Road to APICTA</span>
+          <span className="flex items-center gap-2.5 whitespace-nowrap">
+            Participating in
+            <Image
+              src="/brand/developerday-wordmark.webp"
+              alt="developerday.id"
+              width={732}
+              height={96}
+              className="h-4 w-auto"
+            />
+          </span>
+          <span className="whitespace-nowrap">2026 · Road to APICTA</span>
         </a>
       </m.div>
       <m.div
