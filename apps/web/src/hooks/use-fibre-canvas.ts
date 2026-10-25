@@ -2,7 +2,7 @@
 
 import { type RefObject, useEffect } from "react";
 
-import { convergenceFibres } from "@/lib/footer-art/convergence";
+import type { Fibre } from "@/lib/footer-art/fibres";
 import { gpuScene, paintStill, type Rgb } from "@/lib/footer-art/scene";
 
 function brandRgb(element: Element): Rgb {
@@ -14,7 +14,10 @@ function brandRgb(element: Element): Rgb {
 
 // Pattern from FIKES' pulse panel: GPU scene each frame while on screen, rebuilt after resizes or a
 // lost context. Without WebGL2 the fibres are painted once in 2D; reduced motion draws frame 0 only.
-export function useConvergenceCanvas(canvasRef: RefObject<HTMLCanvasElement | null>) {
+export function useFibreCanvas(
+  canvasRef: RefObject<HTMLCanvasElement | null>,
+  build: () => Fibre[],
+) {
   useEffect(() => {
     const canvas = canvasRef.current;
 
@@ -22,7 +25,7 @@ export function useConvergenceCanvas(canvasRef: RefObject<HTMLCanvasElement | nu
 
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const color = brandRgb(canvas);
-    const fibres = convergenceFibres();
+    const fibres = build();
     const gl = canvas.getContext("webgl2", { premultipliedAlpha: true, antialias: true });
     let draw: ((seconds: number) => void) | null = null;
     let frame = 0;
@@ -97,5 +100,5 @@ export function useConvergenceCanvas(canvasRef: RefObject<HTMLCanvasElement | nu
       cancelAnimationFrame(pending);
       cancelAnimationFrame(frame);
     };
-  }, [canvasRef]);
+  }, [canvasRef, build]);
 }

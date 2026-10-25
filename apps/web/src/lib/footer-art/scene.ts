@@ -1,4 +1,4 @@
-import { artBox, type Fibre, fibreVertices } from "@/lib/footer-art/convergence";
+import { artBox, type Fibre, fibreVertices } from "@/lib/footer-art/fibres";
 
 // Comet period per fibre is 6–10 s; time is wrapped on the CPU so float precision holds.
 const period = 60;
