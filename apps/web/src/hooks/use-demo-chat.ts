@@ -3,7 +3,10 @@ import { DefaultChatTransport, type UIMessage } from "ai";
 import { useState } from "react";
 
 import { env } from "@/lib/env";
-import type { ChatLine } from "@/lib/landing/conversations";
+
+export type ChatSide = "in" | "out";
+
+export type ChatLine = { id: string; side: ChatSide; text: string };
 
 const transport = new DefaultChatTransport({ api: `${env.apiUrl}/demo/chat` });
 

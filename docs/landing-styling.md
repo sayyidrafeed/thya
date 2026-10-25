@@ -69,7 +69,7 @@ Diambil dari pola yang sudah jalan di FIKES (`packages/design-tokens/AGENTS.md`,
 
 - Fokus terlihat: `focus-visible:ring-*` memakai token `--color-ring`, bukan `outline-none` tanpa pengganti.
 - Target sentuh minimal 44×44px.
-- Input di `/demo` minimal 16px supaya iOS tidak zoom.
+- Input chat demo minimal 16px supaya iOS tidak zoom.
 - Status tidak hanya disampaikan lewat warna (centang biru WhatsApp tetap punya label untuk screen reader).
 - Satu tema dulu. Kalau temanya terang, set `color-scheme: light` dan `<meta name="theme-color">` sesuai latar.
 

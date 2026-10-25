@@ -1,28 +1,48 @@
+"use client";
+
 import { m } from "motion/react";
 
-import { ChatBubble } from "@/components/chat/chat-bubble";
-import type { ChatLine } from "@/lib/landing/conversations";
+import { ChatText } from "@/components/chat/chat-text";
+import type { MockupConversation } from "@/lib/landing/mockup-conversations";
 
-export function PhoneMockup({ lines }: { lines: readonly ChatLine[] }) {
+export function PhoneMockup({ conversation }: { conversation: MockupConversation }) {
   return (
-    <div className="mx-auto flex aspect-phone w-full max-w-phone flex-col overflow-hidden rounded-phone border-8 border-ink bg-chat shadow-phone">
-      <div className="flex items-center gap-3 bg-brand px-4 py-3 text-on-brand">
-        <span aria-hidden className="size-9 rounded-full bg-on-brand" />
-        <span className="text-body font-medium">Thya</span>
-      </div>
-      <ol aria-label="Example conversation with Thya" className="flex flex-1 flex-col gap-2 p-3">
-        {lines.map((line, index) => (
-          <m.li
-            key={line.id}
-            className="flex flex-col"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2, delay: index * 0.35, ease: "easeOut" }}
+    <div className="w-full max-w-phone rounded-phone bg-ink p-2 shadow-phone">
+      <div className="overflow-hidden rounded-screen bg-chat">
+        <div className="flex items-center gap-3 bg-chat-bar px-4 pt-7 pb-3">
+          <span
+            aria-hidden="true"
+            className="grid size-9 place-items-center rounded-full bg-brand text-caption font-semibold text-on-brand"
           >
-            <ChatBubble side={line.side} text={line.text} />
-          </m.li>
-        ))}
-      </ol>
+            T
+          </span>
+          <div className="leading-tight">
+            <p className="text-caption font-semibold">Thya</p>
+            <p className="text-label text-ink-muted">Sample data · Kopi Senja</p>
+          </div>
+        </div>
+        <div className="relative flex h-chat flex-col justify-end overflow-hidden px-3 py-4 text-chat">
+          <m.div
+            key={conversation.id}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="flex flex-col gap-2"
+          >
+            <p className="ml-auto max-w-[85%] rounded-bubble rounded-tr-sm bg-bubble-out px-3 py-2 shadow-card">
+              {conversation.question}
+            </p>
+            <m.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="max-w-[92%] rounded-bubble rounded-tl-sm bg-bubble-in px-3 py-2 tabular-nums shadow-card"
+            >
+              <ChatText text={conversation.answer} />
+            </m.div>
+          </m.div>
+        </div>
+      </div>
     </div>
   );
 }

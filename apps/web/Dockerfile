@@ -22,7 +22,7 @@ RUN --mount=type=cache,id=thya-web-next,target=/app/apps/web/.next/cache \
     find out -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' -o -name '*.svg' \
       -o -name '*.json' -o -name '*.txt' -o -name '*.xml' \) -exec gzip -k -9 {} +
 
-# The CSP must allow the API origin, or /demo cannot reach the agent.
+# The CSP must allow the API origin, or the demo chat cannot reach the agent.
 RUN api_origin="$(bun -e 'console.log(new URL(process.env.NEXT_PUBLIC_API_URL).origin)')" && \
     sed "s|__API_ORIGIN__|${api_origin}|" nginx.conf > /tmp/nginx.conf
 

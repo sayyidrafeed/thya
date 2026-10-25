@@ -1,64 +1,97 @@
 @import "tailwindcss";
 
-/* PLACEHOLDER tokens until the visual references arrive; keep the role names (docs/landing-styling.md). */
+/* Light paper theme from Rafee's references (speko, mireye, netraruntime); keep the role names (docs/landing-styling.md). */
 @theme {
   /* Reset Tailwind's palette so only Thya tokens exist. */
   --color-*: initial;
 
-  /* Surfaces */
-  --color-surface: #ffffff;
-  /* Section bands and quiet fills. */
-  --color-surface-muted: #f0f2f5;
+  /* Surfaces: warm paper page, a deeper paper for panels and cards. */
+  --color-surface: #faf8f3;
+  --color-surface-muted: #f1ede4;
+  --color-surface-raised: #ffffff;
 
-  /* Text. ink 17.5:1 and ink-muted 6.1:1 on surface; ink-muted 5.4:1 on surface-muted. */
-  --color-ink: #111b21;
-  --color-ink-muted: #54656f;
+  /* Text. ink 17.2:1 and ink-muted 6.8:1 on surface; ink-muted 6.2:1 on surface-muted, 6.0:1 on chat. */
+  --color-ink: #17150f;
+  --color-ink-muted: #5c574c;
 
   /* Hairlines and dividers. Decorative only, never the sole cue. */
-  --color-line: #d1d7db;
+  --color-line: #e2dccf;
+  --color-line-strong: #c9c1b0;
 
-  /* Brand: the main action, links, the selected tab. on-brand 5.2:1 on brand. */
-  --color-brand: #0b7a6c;
+  /* Brand: the main action, highlighted words, the selected use case. on-brand 6.5:1 on brand; brand 6.1:1 on surface. */
+  --color-brand: #1c6b47;
   --color-on-brand: #ffffff;
-  /* Focus ring, 5.2:1 on surface. */
-  --color-ring: #0b7a6c;
+  /* Pale brand wash behind tags and the selected item. brand 5.4:1 on brand-soft. */
+  --color-brand-soft: #e1eee5;
+  /* Focus ring, 6.1:1 on surface. */
+  --color-ring: #1c6b47;
 
-  /* WhatsApp chat mockup. ink 14.6:1 on chat, 15.8:1 on bubble-out; ink-muted 5.1:1 on chat. */
+  /* WhatsApp chat mockup. ink 14.6:1 on chat, 15.8:1 on bubble-out. */
   --color-chat: #efeae2;
+  --color-chat-bar: #f6f3ee;
   --color-bubble-in: #ffffff;
   --color-bubble-out: #d9fdd3;
 
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
   /* Text styles: each carries its own line height and tracking. */
-  --text-display: 2.5rem;
+  --text-hero: 2.75rem;
+  --text-hero--line-height: 1.04;
+  --text-hero--letter-spacing: -0.035em;
+  --text-hero-wide: 4.5rem;
+  --text-hero-wide--line-height: 1.02;
+  --text-hero-wide--letter-spacing: -0.04em;
+  --text-display: 2.25rem;
   --text-display--line-height: 1.1;
-  --text-display--letter-spacing: -0.02em;
-  --text-title: 1.5rem;
+  --text-display--letter-spacing: -0.03em;
+  --text-display-wide: 3.25rem;
+  --text-display-wide--line-height: 1.05;
+  --text-display-wide--letter-spacing: -0.035em;
+  --text-title: 1.375rem;
   --text-title--line-height: 1.25;
-  --text-title--letter-spacing: -0.01em;
+  --text-title--letter-spacing: -0.015em;
+  --text-lead: 1.125rem;
+  --text-lead--line-height: 1.55;
   --text-body: 1rem;
   --text-body--line-height: 1.6;
   --text-caption: 0.8125rem;
-  --text-caption--line-height: 1.4;
-  /* Chat bubbles; 16px so the /demo input never triggers iOS zoom. */
-  --text-chat: 1rem;
+  --text-caption--line-height: 1.45;
+  /* Mono labels such as "01 · Ask". */
+  --text-label: 0.75rem;
+  --text-label--line-height: 1.4;
+  --text-label--letter-spacing: 0.04em;
+  /* Chat bubbles inside the phone. */
+  --text-chat: 0.875rem;
   --text-chat--line-height: 1.4;
+  /* ASCII field in the footer: tight lines so the grid reads as texture. */
+  --text-ascii: 0.75rem;
+  --text-ascii--line-height: 1;
 
   /* Corner sizes */
-  --radius-control: 0.75rem;
-  --radius-card: 1rem;
+  --radius-control: 999px;
+  --radius-card: 1.25rem;
+  --radius-panel: 1.75rem;
   --radius-bubble: 0.75rem;
-  --radius-phone: 2.5rem;
+  --radius-phone: 2.75rem;
+  /* Screen inside the phone bezel: phone radius minus the 0.5rem bezel. */
+  --radius-screen: 2.25rem;
 
   /* Depth */
-  --shadow-card: 0 1px 2px rgb(17 27 33 / 0.08);
-  --shadow-phone: 0 24px 48px -16px rgb(17 27 33 / 0.25);
+  --shadow-card: 0 1px 2px rgb(23 21 15 / 0.06);
+  --shadow-phone: 0 30px 60px -24px rgb(23 21 15 / 0.35);
 
   /* Layout */
   --container-page: 72rem;
-  --container-phone: 22rem;
+  --container-phone: 20.5rem;
   --container-prose: 40rem;
-  --spacing-section: 6rem;
+  --spacing-section: 7rem;
+  /* Fixed chat viewport so switching use cases never changes the phone's height. */
+  --spacing-chat: 29rem;
   --aspect-phone: 9 / 19;
+
+  /* Motion */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @layer base {
@@ -66,11 +99,21 @@
     color-scheme: light;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
   body {
-    @apply bg-surface text-body text-ink antialiased;
+    @apply bg-surface font-sans text-body text-ink antialiased;
   }
 
   ::selection {
-    @apply bg-bubble-out text-ink;
+    @apply bg-brand-soft text-ink;
   }
 }

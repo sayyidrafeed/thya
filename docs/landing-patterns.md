@@ -17,14 +17,12 @@ Urutan dari Rafee: Siera paling kuat, lalu FIKES, lalu nalarx-docs. Semua di-pul
 ```
 apps/web/
   src/
-    app/                  route Next: layout.tsx, page.tsx (landing), demo/page.tsx, globals.css
+    app/                  satu route: layout.tsx, page.tsx (landing), globals.css
     components/
-      landing/            satu file per section (hero.tsx, phone-mockup.tsx, ...); landing-page.tsx hanya menyusun
-      demo/               UI chat /demo
-      chat/               bubble chat bergaya WhatsApp, dipakai landing dan /demo
+      landing/            satu file per section (hero.tsx, phone-mockup.tsx, demo-chat.tsx, ...); page.tsx hanya menyusun
       motion/             MotionProvider (LazyMotion + MotionConfig reducedMotion="user")
       ui/                 primitive kecil yang dipakai ulang (button, badge); boleh mengatur tampilannya sendiri
-    hooks/                perilaku: use-feature-tabs.ts, use-demo-chat.ts
+    hooks/                perilaku: use-demo-chat.ts, dan hook lain saat section-nya dibuat
     lib/<domain>/         fungsi murni dan data: lib/whatsapp/format.ts (parser *tebal* dan daftar -), lib/env.ts
   next.config.ts, tsconfig.json, Dockerfile (+ Dockerfile.dockerignore), nginx.conf
   AGENTS.md           blok dari `next dev` (arahkan ke docs Next lokal) + pointer ke dokumen ini
@@ -32,7 +30,7 @@ apps/web/
 
 - `src/app/**` hanya menyusun dan memasang metadata. Tidak ada markup section di file route.
 - `components`, `hooks`, dan `lib` tidak pernah meng-import dari `src/app/**` (Siera rule 5a).
-- Nama file kebab-case. File hook bernama sama dengan export-nya: `use-feature-tabs.ts` meng-export `useFeatureTabs`.
+- Nama file kebab-case. File hook bernama sama dengan export-nya: `use-demo-chat.ts` meng-export `useDemoChat`.
 
 ## Lapisan (dari Siera rule 5–8)
 
@@ -42,7 +40,16 @@ apps/web/
 | Hook | Perilaku, efek, state kompleks. Satu hook satu urusan | Mengembalikan JSX, memuat class Tailwind |
 | `lib/` | Fungsi murni, konstanta, mapper, schema Zod | Import React |
 
-State bersama: `/demo` memakai `useChat` dari `@ai-sdk/react`; selain itu `useState` di dalam hook. Tidak ada store global.
+State bersama: section chat demo memakai `useChat` dari `@ai-sdk/react`; selain itu `useState` di dalam hook. Tidak ada store global.
+
+## Satu route
+
+Landing hanya satu halaman, `/` (keputusan Rafee 2026-10-25), dan untuk sekarang statis penuh: tidak memanggil API (Rafee 2026-10-25). Chat demo live ditunda; `use-demo-chat.ts` dan `lib/env.ts` dibiarkan tanpa pemakai sampai section itu kembali. Aturan chat demo di bawah berlaku saat itu.
+
+- `page.tsx` adalah Server Component yang menyusun section. Section statis tidak menambah JS.
+- Bagian interaktif (tab mockup, chat demo) dibuat sebagai island `"use client"` sekecil mungkin.
+- Chat demo dimuat lazy dengan `next/dynamic` saat section-nya terlihat atau diklik, supaya AI SDK tidak masuk muatan awal.
+- Animasi sederhana pakai CSS; `motion` hanya untuk yang tidak bisa dilakukan CSS. Build 2026-10-25 (sebelum section dihapus): runtime Next + React sekitar 150 KB gzip, `motion` 44 KB.
 
 ## React dan Next
 
@@ -68,7 +75,7 @@ Static export → image nginx → GHCR, mengikuti `nalarx-docs/Dockerfile` dan `
 
 1. Stage builder `oven/bun:1.4.2`: `bun install --frozen-lockfile`, `bun run build`, lalu gzip `-k -9` file teks di `out/`.
 2. Stage runner `nginxinc/nginx-unprivileged` (alpine-slim, tag di-pin): `gzip_static on`, cache `immutable` untuk `/_next/static/`, `must-revalidate` untuk HTML, port 3000.
-3. Header: `X-Content-Type-Options`, `X-Frame-Options DENY`, `Referrer-Policy`, `Permissions-Policy`, dan CSP. **`connect-src` wajib memuat origin API**, kalau tidak `/demo` tidak bisa memanggil agent.
+3. Header: `X-Content-Type-Options`, `X-Frame-Options DENY`, `Referrer-Policy`, `Permissions-Policy`, dan CSP. **`connect-src` wajib memuat origin API**, kalau tidak section chat demo tidak bisa memanggil agent.
 
 Image di-build dari root repo supaya lockfile workspace ikut: `docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_URL=<url API> .`. Origin API diambil dari build arg dan disisipkan ke CSP. `style-src` tetap `'unsafe-inline'` karena `motion` merender state awal sebagai atribut `style`.
 
