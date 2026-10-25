@@ -194,6 +194,7 @@ Per 2026-10-25:
 - [ ] Destination R2 + jadwal backup (ditunda oleh Rafee untuk menghemat egress, 2026-10-25). Wajib aktif sebelum ada data UMKM sungguhan di DB
 - [ ] Uji backup manual dan uji restore
 - [x] Repo `sayyidrafeed/thya` (public) di GitHub
-- [ ] CI/CD GitHub Actions → GHCR → Dokploy, lalu `/health` lewat HTTPS
+- [x] CI/CD GitHub Actions → GHCR → webhook Dokploy, diuji ujung ke ujung; `https://thya-api.sayyidrafee.com/health` → `{"ok":true}`
+- [ ] Aktifkan 2FA Dokploy (belum dikonfirmasi)
 - [ ] Keputusan tempat landing `thya.veterantech.id` (VPS ini atau tempat lain) + record DNS-nya
 - [ ] Catat batas bandwidth paket dari tab Usage
