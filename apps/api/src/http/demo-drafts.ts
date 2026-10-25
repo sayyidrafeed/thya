@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { DraftPort } from "../actions/kinds";
 
 const DEMO_SAVED =
-  "Sudah dicatat, Kak. Ini versi demo, jadi data contoh Kopi Senja tidak berubah. Di WhatsApp, catatan Kakak benar-benar tersimpan.";
+  "Siap, Kak. Ini versi demo, jadi data contoh Kopi Senja tidak berubah dan tidak ada yang dikirim. Di WhatsApp, ini benar-benar tersimpan.";
 
 const DEMO_CANCELLED = "Oke Kak, dibatalkan. Tidak ada yang disimpan.";
 const NOTHING_OPEN = "Belum ada yang menunggu konfirmasi, Kak.";
@@ -34,6 +34,7 @@ export function demoDraftPort(messages: UIMessage[]): DraftPort {
 
   return {
     create: async () => ({ draftId: crypto.randomUUID() }),
+    listSchedules: async () => [],
     confirmOpen: async () =>
       open ? { status: "done", message: DEMO_SAVED } : { status: "none", message: NOTHING_OPEN },
     cancelOpen: async () =>

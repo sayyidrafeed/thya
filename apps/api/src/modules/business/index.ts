@@ -87,3 +87,9 @@ export async function createPhoneBusiness(
 
   return toBusiness(row);
 }
+
+export async function findBusiness(db: Db, businessId: string): Promise<Business | null> {
+  const [row] = await db.select().from(businesses).where(eq(businesses.id, businessId));
+
+  return row ? toBusiness(row) : null;
+}

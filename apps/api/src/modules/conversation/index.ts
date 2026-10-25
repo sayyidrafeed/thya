@@ -1,5 +1,5 @@
 import type { ModelMessage } from "ai";
-import { and, asc, desc, eq, gte, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, max, sql } from "drizzle-orm";
 import { z } from "zod";
 import { repairHistory } from "../../agent";
 import type { Db } from "../../db/client";
@@ -190,4 +190,14 @@ export async function markOutbound(
 
 export async function countOutbound(db: Db, traceId: string) {
   return db.$count(outboundMessages, eq(outboundMessages.traceId, traceId));
+}
+
+// Numbers with sends still pending since before `before`: their sender crashed after the commit.
+export async function pendingRecipients(db: Db, before: Date): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ to: sql<string>`${outboundMessages.payload}->>'to'` })
+    .from(outboundMessages)
+    .where(and(eq(outboundMessages.status, "pending"), lte(outboundMessages.createdAt, before)));
+
+  return rows.map((row) => row.to);
 }

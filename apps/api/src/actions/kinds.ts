@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { scheduleSpecSchema, type ScheduleSpec } from "../modules/schedules";
 
 // What each draft kind freezes at draft time (decision Q1, engine-plan B3). The executor runs these
 // stored arguments, never new ones from the model, and parses them again at that boundary.
@@ -28,13 +29,17 @@ export const menuCostArgs = z.object({
   validFrom: z.iso.date(),
 });
 
+export const scheduleCancelArgs = z.object({ scheduleId: z.string(), summary: z.string() });
+
 export type SalesRecordArgs = z.infer<typeof salesRecordArgs>;
 
 export type MenuCostArgs = z.infer<typeof menuCostArgs>;
 
 export type DraftRequest =
   | { kind: "sales.record"; args: SalesRecordArgs; summary: string }
-  | { kind: "menu.set_cost"; args: MenuCostArgs; summary: string };
+  | { kind: "menu.set_cost"; args: MenuCostArgs; summary: string }
+  | { kind: "schedule.create"; args: ScheduleSpec; summary: string }
+  | { kind: "schedule.cancel"; args: z.infer<typeof scheduleCancelArgs>; summary: string };
 
 export type DraftKind = DraftRequest["kind"];
 
@@ -42,6 +47,8 @@ export type DraftKind = DraftRequest["kind"];
 export const storedDraftSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("sales.record"), args: salesRecordArgs }),
   z.object({ kind: z.literal("menu.set_cost"), args: menuCostArgs }),
+  z.object({ kind: z.literal("schedule.create"), args: scheduleSpecSchema }),
+  z.object({ kind: z.literal("schedule.cancel"), args: scheduleCancelArgs }),
 ]);
 
 export type StoredDraft = z.infer<typeof storedDraftSchema>;
@@ -58,4 +65,8 @@ export type DraftPort = {
   // Typed "ya": runs the one open draft. A tapped button goes through the channel instead.
   confirmOpen: () => Promise<DraftOutcome>;
   cancelOpen: () => Promise<DraftOutcome>;
+  // Active schedules, to list, cancel, and skip duplicates. A port without them has none.
+  listSchedules?: () => Promise<ScheduleView[]>;
 };
+
+export type ScheduleView = { id: string; summary: string; nextRun: string; spec: ScheduleSpec };

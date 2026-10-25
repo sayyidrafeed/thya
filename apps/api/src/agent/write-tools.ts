@@ -6,10 +6,17 @@ import {
   type DraftPort,
   type DraftRequest,
 } from "../actions/kinds";
-import { menuCostSummary, salesSummary } from "../actions/summary";
+import { menuCostSummary, salesSummary, runLabel } from "../actions/summary";
 import type { SalesDataset } from "../sales/demo-shop";
 import { formatRupiah } from "../sales/format";
 import { addDays, type MenuItem } from "../sales/report";
+import {
+  DAYS_OF_WEEK,
+  MAX_ACTIVE_SCHEDULES,
+  nextRunAt,
+  scheduleSpecSchema,
+  scheduleSummary,
+} from "../modules/schedules";
 
 // Write tools only prepare drafts (decision Q1). Nothing is saved until the owner taps "Ya" (code)
 // or types "ya" (confirmDraft). Draft text comes from code, so every number in it is grounded.
@@ -19,6 +26,9 @@ export const WRITE_TOOL_NAMES = [
   "setMenuCost",
   "confirmDraft",
   "cancelDraft",
+  "createSchedule",
+  "listSchedules",
+  "cancelSchedule",
 ] as const;
 
 export type WriteToolName = (typeof WRITE_TOOL_NAMES)[number];
@@ -153,6 +163,32 @@ export const setMenuCostInputSchema = z.object({
     .describe("Sudah termasuk gelas/kemasan dan es? null kalau belum ditanya"),
 });
 
+export const createScheduleInputSchema = z.object({
+  kind: z
+    .enum(["recap", "reminder"])
+    .describe("recap = rekap penjualan otomatis, reminder = pengingat teks"),
+  frequency: z
+    .enum(["once", "daily", "weekly"])
+    .describe("once = sekali, daily = tiap hari, weekly = tiap minggu"),
+  time: z
+    .string()
+    .describe(
+      'Jam WIB 24 jam "HH:MM". "Jam 9 malam" = "21:00". Kalau pagi/malam tidak jelas, tanya dulu',
+    ),
+  dayOfWeek: z.enum(DAYS_OF_WEEK).nullable().describe("Hari untuk weekly, selain itu null"),
+  date: z.iso.date().nullable().describe("YYYY-MM-DD untuk once, selain itu null"),
+  recapKind: z
+    .enum(["daily", "weekly"])
+    .nullable()
+    .describe(
+      "Untuk recap: daily = rekap kemarin, weekly = rekap minggu lalu; null untuk reminder",
+    ),
+  reminderText: z
+    .string()
+    .nullable()
+    .describe("Isi pengingat untuk reminder (maksimal 120 huruf), null untuk recap"),
+});
+
 const ESTIMATE_SHARE = { half: 2, third: 3, quarter: 4 } as const;
 
 type CostInput = z.infer<typeof setMenuCostInputSchema>;
@@ -216,6 +252,41 @@ export function createWriteTools(dataset: SalesDataset, port: DraftPort | null) 
     return { status: "draft", draftId, summary: request.summary, note: DRAFT_NOTE };
   }
 
+  async function scheduleDraft(input: z.infer<typeof createScheduleInputSchema>) {
+    if (port === null) return { status: "error" as const, message: NOT_READY };
+
+    const parsed = scheduleSpecSchema.safeParse(input);
+
+    if (!parsed.success)
+      return {
+        status: "error" as const,
+        message: parsed.error.issues.map((issue) => issue.message).join(" "),
+      };
+
+    const spec = parsed.data;
+    const summary = scheduleSummary(spec);
+    const active = await (port.listSchedules?.() ?? []);
+    const next = nextRunAt(spec, dataset.asOf);
+
+    if (active.some((schedule) => schedule.summary === summary))
+      return { status: "error" as const, message: `Jadwal ini sudah ada: ${summary}.` };
+
+    if (active.length >= MAX_ACTIVE_SCHEDULES)
+      return {
+        status: "error" as const,
+        message: `Jadwal aktif sudah ${MAX_ACTIVE_SCHEDULES}. Tawarkan untuk membatalkan salah satu.`,
+      };
+
+    if (next === null)
+      return { status: "error" as const, message: "Waktunya sudah lewat. Tanya waktu lain." };
+
+    return draft(() => ({
+      kind: "schedule.create",
+      args: spec,
+      summary: `${summary}\nYang pertama: ${runLabel(next)}`,
+    }));
+  }
+
   return {
     recordSales: tool({
       description:
@@ -261,6 +332,57 @@ export function createWriteTools(dataset: SalesDataset, port: DraftPort | null) 
             summary: menuCostSummary(args) + recipeNote(input),
           };
         }),
+    }),
+
+    createSchedule: tool({
+      description:
+        "Siapkan jadwal rekap otomatis atau pengingat. Hanya membuat draft. Jangan menebak jam: kalau Kakak tidak menyebut jam " +
+        "atau tidak jelas pagi/malam, tanya dulu.",
+      inputSchema: createScheduleInputSchema,
+      execute: scheduleDraft,
+    }),
+
+    listSchedules: tool({
+      description: "Daftar jadwal rekap dan pengingat yang aktif milik Kakak.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        if (port === null) return { status: "error" as const, message: NOT_READY };
+
+        const schedules = (await (port.listSchedules?.() ?? [])).map(
+          ({ id, summary, nextRun }) => ({
+            id,
+            summary,
+            nextRun,
+          }),
+        );
+
+        return { status: "ok" as const, schedules };
+      },
+    }),
+
+    cancelSchedule: tool({
+      description:
+        "Siapkan pembatalan satu jadwal. Ambil id dari listSchedules dulu. Hanya membuat draft.",
+      inputSchema: z.object({ scheduleId: z.string() }),
+      execute: async ({ scheduleId }) => {
+        if (port === null) return { status: "error" as const, message: NOT_READY };
+
+        const target = (await (port.listSchedules?.() ?? [])).find(
+          (schedule) => schedule.id === scheduleId,
+        );
+
+        if (!target)
+          return {
+            status: "error" as const,
+            message: "Jadwal itu tidak ada. Panggil listSchedules dulu.",
+          };
+
+        return draft(() => ({
+          kind: "schedule.cancel",
+          args: { scheduleId, summary: target.summary },
+          summary: `Batalkan jadwal: ${target.summary}`,
+        }));
+      },
     }),
 
     confirmDraft: tool({

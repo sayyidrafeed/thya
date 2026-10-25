@@ -23,6 +23,10 @@ const envSchema = z.object({
   WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
   WHATSAPP_APP_SECRET: z.string().min(1).optional(),
   WHATSAPP_VERIFY_TOKEN: z.string().min(1).optional(),
+  // Approved utility templates for sends outside the 24-hour window (morning-handoff.md).
+  WHATSAPP_RECAP_TEMPLATE: z.string().min(1).optional(),
+  WHATSAPP_REMINDER_TEMPLATE: z.string().min(1).optional(),
+  WHATSAPP_TEMPLATE_LANGUAGE: z.string().min(2).default("id"),
   WHATSAPP_GRAPH_VERSION: z
     .string()
     .regex(/^v\d+\.\d+$/)

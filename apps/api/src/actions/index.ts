@@ -9,7 +9,15 @@ import {
 } from "../modules/drafts";
 import { formatRupiah } from "../sales/format";
 import { recordChatSales, setMenuCost } from "../sales/repository";
-import { dayLabel } from "./summary";
+import {
+  cancelSchedule,
+  createSchedule,
+  listActiveSchedules,
+  ScheduleError,
+  scheduleSummary,
+  specOf,
+} from "../modules/schedules";
+import { dayLabel, runLabel } from "./summary";
 import { storedDraftSchema, type DraftOutcome, type DraftPort, type StoredDraft } from "./kinds";
 
 // Draft executors: one per kind, each a thin call into the module that owns the table. Messages
@@ -28,7 +36,22 @@ const FAILED = "Maaf Kak, belum berhasil disimpan. Coba sebutkan lagi sebentar l
 const NOTHING_OPEN = "Belum ada yang menunggu konfirmasi, Kak.";
 const CANCELLED = "Oke Kak, dibatalkan. Tidak ada yang disimpan.";
 
-async function execute(db: Db, businessId: string, draftId: string, draft: StoredDraft) {
+async function execute(
+  db: Db,
+  { businessId, draftId, now }: { businessId: string; draftId: string; now: Date },
+  draft: StoredDraft,
+) {
+  if (draft.kind === "schedule.create") {
+    const row = await createSchedule(db, { businessId, spec: draft.args, now });
+
+    return `Siap, Kak. ${scheduleSummary(draft.args)}. Yang pertama ${runLabel(row.nextRunAt)}.`;
+  }
+
+  if (draft.kind === "schedule.cancel")
+    return (await cancelSchedule(db, { businessId, scheduleId: draft.args.scheduleId }))
+      ? `Oke Kak, jadwal dibatalkan: ${draft.args.summary}.`
+      : "Jadwal itu sudah tidak aktif, Kak.";
+
   if (draft.kind === "sales.record") {
     await recordChatSales(db, { businessId, draftId, args: draft.args });
 
@@ -53,7 +76,7 @@ export async function runDraft(
 
   try {
     const stored = storedDraftSchema.parse({ kind: claim.draft.kind, args: claim.draft.args });
-    const message = await execute(db, businessId, draftId, stored);
+    const message = await execute(db, { businessId, draftId, now }, stored);
     await finishDraft(db, draftId, { status: "done", outcome: { message } });
 
     return { status: "done", message };
@@ -62,7 +85,8 @@ export async function runDraft(
     console.error("draft failed:", reason);
     await finishDraft(db, draftId, { status: "failed", outcome: { error: reason } });
 
-    return { status: "failed", message: FAILED };
+    // A schedule rule broken since the draft (a duplicate, too many) is told as it is.
+    return { status: "failed", message: error instanceof ScheduleError ? error.message : FAILED };
   }
 }
 
@@ -93,6 +117,18 @@ export function dbDraftPort(
         ? { status: "none", message: NOTHING_OPEN }
         : runDraft(db, { businessId, draftId: open.id, now });
     },
+
+    listSchedules: async () =>
+      (await listActiveSchedules(db, businessId)).map((row) => {
+        const spec = specOf(row);
+
+        return {
+          id: row.id,
+          summary: scheduleSummary(spec),
+          nextRun: runLabel(row.nextRunAt),
+          spec,
+        };
+      }),
 
     cancelOpen: async () => {
       const open = await openDraft(db, businessId, now);

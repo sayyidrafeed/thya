@@ -19,6 +19,7 @@ function recordingPort() {
     },
     confirmOpen: async () => ({ status: "done", message: "Sudah dicatat, Kak." }),
     cancelOpen: async () => ({ status: "done", message: "Oke Kak, dibatalkan." }),
+    listSchedules: async () => [],
   };
 
   return { port, created };
