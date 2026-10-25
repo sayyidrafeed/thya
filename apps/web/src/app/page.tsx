@@ -8,6 +8,7 @@ import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteHeader } from "@/components/landing/site-header";
 import { Testimonials } from "@/components/landing/testimonials";
 import { MotionProvider } from "@/components/motion/motion-provider";
+import { Playground } from "@/components/playground/playground";
 
 export default function HomePage() {
   return (
@@ -19,6 +20,7 @@ export default function HomePage() {
           <MeetThya />
           <Problem />
           <HowItWorks />
+          <Playground />
           <Testimonials />
           <Faq />
           <DeveloperDayCta />

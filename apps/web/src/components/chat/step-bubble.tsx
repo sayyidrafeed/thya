@@ -1,10 +1,11 @@
 "use client";
 
-import { FileSpreadsheet, Link2, Mail } from "lucide-react";
+import { ChartColumn, FileSpreadsheet, Link2, Mail } from "lucide-react";
 import { m } from "motion/react";
 import type { ReactNode } from "react";
 
 import { ThyaBubble, UserBubble } from "@/components/chat/bubbles";
+import { ChartBars } from "@/components/chat/chart-bars";
 import type { ChatStep } from "@/lib/landing/showcase-scenes";
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -76,6 +77,13 @@ export function StepBubble({ step }: { step: ChatStep }) {
       return (
         <Card side="thya">
           <CardHead icon={<Mail className="size-4" />} title={step.subject} meta={step.status} />
+        </Card>
+      );
+    case "chart":
+      return (
+        <Card side="thya">
+          <CardHead icon={<ChartColumn className="size-4" />} title={step.title} meta={step.meta} />
+          <ChartBars bars={step.bars} caption={step.caption} />
         </Card>
       );
   }

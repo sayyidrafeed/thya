@@ -6,6 +6,7 @@ import { useScrolledPast } from "@/hooks/use-scrolled-past";
 const links = [
   { href: "#meet-thya", label: "Meet Thya" },
   { href: "#how-it-works", label: "How it works" },
+  { href: "#playground", label: "Playground", phone: true },
   { href: "#faq", label: "FAQ" },
 ] as const;
 
@@ -29,7 +30,7 @@ export function SiteHeader() {
         </a>
         <ul className="flex items-center gap-1">
           {links.map((link) => (
-            <li key={link.href} className="hidden first:block sm:block">
+            <li key={link.href} className={"phone" in link ? "block" : "hidden sm:block"}>
               <a
                 href={link.href}
                 className="inline-flex min-h-11 items-center rounded-control px-3 text-caption text-ink-muted transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"

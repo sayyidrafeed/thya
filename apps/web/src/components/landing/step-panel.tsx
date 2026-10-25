@@ -1,11 +1,11 @@
 "use client";
 
-import { ScenePlayer } from "@/components/chat/scene-player";
+import { StepBubble } from "@/components/chat/step-bubble";
 import type { HowItWorksStep } from "@/lib/landing/how-it-works";
 import { showcaseScenes } from "@/lib/landing/showcase-scenes";
 
-// The chat for one use case, replaying while it is on screen. The height is fixed so a replay never
-// changes the page layout: Safari has no scroll anchoring, so a growing panel made the page jump.
+// The finished chat for one use case. It stays still: the live chat is the Playground's job (D1 in
+// docs/landing-demo-plan.md). The height is fixed because Safari has no scroll anchoring.
 export function StepPanel({ step }: { step: HowItWorksStep }) {
   const scene = showcaseScenes.find((item) => item.id === step.sceneId);
 
@@ -18,7 +18,12 @@ export function StepPanel({ step }: { step: HowItWorksStep }) {
           <span aria-hidden="true" className="size-2 rounded-full bg-brand" />
           thya · your agent
         </p>
-        <ScenePlayer scene={scene} />
+        <div className="flex min-h-0 flex-1 flex-col justify-end gap-2 overflow-hidden text-bubble *:shrink-0">
+          {scene.steps.map((step, index) => (
+            // oxlint-disable-next-line react/no-array-index-key -- steps are a fixed script; position is identity
+            <StepBubble key={index} step={step} />
+          ))}
+        </div>
       </div>
     </div>
   );

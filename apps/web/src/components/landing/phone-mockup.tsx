@@ -9,19 +9,25 @@ import { ThyaMark } from "@/components/ui/thya-mark";
 import type { ThreadEntry } from "@/hooks/use-showcase";
 import { showcaseScenes } from "@/lib/landing/showcase-scenes";
 
+export function ChatHeader() {
+  return (
+    <div className="flex items-center gap-3 border-b border-line bg-chat-bar px-4 pb-3">
+      <span className="grid size-9 place-items-center rounded-full bg-surface-raised shadow-card">
+        <ThyaMark />
+      </span>
+      <div className="flex-1 leading-tight">
+        <p className="text-caption font-semibold">Thya</p>
+        <p className="text-label text-ink-muted">Your agent</p>
+      </div>
+    </div>
+  );
+}
+
 // A running thread inside the phone; older scenes scroll out the top.
 export function PhoneMockup({ entries }: { entries: ThreadEntry[] }) {
   return (
     <DeviceFrame>
-      <div className="flex items-center gap-3 border-b border-line bg-chat-bar px-4 pb-3">
-        <span className="grid size-9 place-items-center rounded-full bg-surface-raised shadow-card">
-          <ThyaMark />
-        </span>
-        <div className="flex-1 leading-tight">
-          <p className="text-caption font-semibold">Thya</p>
-          <p className="text-label text-ink-muted">Your agent</p>
-        </div>
-      </div>
+      <ChatHeader />
       <div className="relative flex h-chat flex-col justify-end gap-2 overflow-hidden px-3 py-3 text-bubble">
         {entries.map((entry) => {
           const scene = showcaseScenes[entry.scene];

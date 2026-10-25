@@ -8,7 +8,15 @@ export type ChatStep =
   | { from: "user" | "thya"; kind: "text"; text: string }
   | { from: "user"; kind: "link"; title: string; url: string }
   | { from: "thya"; kind: "sheet"; title: string; rows: readonly (readonly [string, string])[] }
-  | { from: "thya"; kind: "email"; subject: string; status: string };
+  | { from: "thya"; kind: "email"; subject: string; status: string }
+  | {
+      from: "thya";
+      kind: "chart";
+      title: string;
+      meta: string;
+      bars: readonly { label: string; value: number; display: string }[];
+      caption: string;
+    };
 
 export type Scene = {
   id: string;
