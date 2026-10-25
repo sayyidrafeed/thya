@@ -1,11 +1,17 @@
 // Eval layer c: runs EVAL_CASES through runTurn (the production turn, number check included) on
 // NetraRuntime, k times each, and grades every trial in code. On demand only (decision Q4): `bun run eval [--k 3] [--only id,id]`.
 // Exit 0 = PASS, 1 = BLOCKED (a required check failed), 2 = REVIEW (something did not run).
+// Writes summary.json (with model, commit and prompt hash, U1), transcripts.jsonl and report.md
+// (failed trials only, U3). Compare runs with eval/compare.ts (U2, U8).
+import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { parseArgs } from "node:util";
-import type { ModelMessage } from "ai";
+import { asSchema, type ModelMessage, type Tool } from "ai";
+import type { DraftPort, DraftRequest } from "../src/actions/kinds";
 import { promptFacts, runTurn, type TurnResult } from "../src/agent";
+import { buildInstructions } from "../src/agent/prompt";
 import { createSalesTools, queryMetricInputSchema } from "../src/agent/tools";
+import { createWriteTools } from "../src/agent/write-tools";
 import { chatModel } from "../src/llm";
 import { createDb } from "../src/db/client";
 import { env } from "../src/env";
@@ -14,7 +20,9 @@ import type { SalesDataset } from "../src/sales/demo-shop";
 import { loadSalesDataset } from "../src/sales/repository";
 import type { ConceptEvent } from "../src/semantic/exposure";
 import { EVAL_CASES, EVAL_NOW, toolCall, type EvalCase } from "./cases";
+import { passHat } from "./compare";
 import { gradeConversation, type Grade, type Turn } from "./graders";
+import { writeReport } from "./report";
 
 // Decision Q5: figures are held to pass^5, everything else to pass^3.
 const TRIALS_BY_CATEGORY: Record<EvalCase["category"], number> = {
@@ -22,11 +30,51 @@ const TRIALS_BY_CATEGORY: Record<EvalCase["category"], number> = {
   tool_choice: 3,
   guardrail: 3,
   education: 3,
+  write_confirm: 3,
+  onboarding: 3,
+  tone: 3,
 };
 
 const CONCURRENCY = 2;
 
-type Trial = {
+// Drafts stay in memory per trial, so write cases never touch the shared demo seed. `saved` is
+// what G4 grades: a draft runs once, only after "ya" (decision Q1).
+function memoryDrafts() {
+  let open: DraftRequest | null = null;
+  const saved: DraftRequest[] = [];
+
+  const nothingOpen = {
+    status: "none",
+    message: "Belum ada yang menunggu konfirmasi, Kak.",
+  } as const;
+
+  const port: DraftPort = {
+    create: async (request) => {
+      open = request;
+
+      return { draftId: crypto.randomUUID() };
+    },
+    confirmOpen: async () => {
+      if (open === null) return nothingOpen;
+
+      saved.push(open);
+      open = null;
+
+      return { status: "done", message: "Sudah dicatat, Kak." };
+    },
+    cancelOpen: async () => {
+      if (open === null) return nothingOpen;
+
+      open = null;
+
+      return { status: "done", message: "Oke Kak, dibatalkan. Tidak ada yang disimpan." };
+    },
+  };
+
+  return { port, saved };
+}
+
+export type Trial = {
   id: string;
   trial: number;
   turns: Turn[];
@@ -36,6 +84,7 @@ type Trial = {
   inputTokens: number;
   cachedInputTokens: number;
   checks: TurnResult["check"][];
+  saved: DraftRequest[];
 };
 
 const { values: flags } = parseArgs({
@@ -60,14 +109,24 @@ async function expectedFacts(testCase: EvalCase) {
   const options = { toolCallId: "eval", messages: [], context: {} };
 
   return Promise.all(
-    (testCase.expect.facts ?? []).map(async ({ args, near }) => {
+    (testCase.expect.facts ?? []).map(async ({ args, field, near }) => {
       const input = queryMetricInputSchema.parse({ userTerm: null, ...args });
       const output = await queryMetric.execute!(input, options);
 
-      if (!("status" in output) || output.status !== "ok" || output.value === null)
+      if (!("status" in output) || output.status !== "ok")
         throw new Error(`${testCase.id}: expected figure has no value`);
 
-      return { value: output.value, near };
+      const value =
+        field === "value"
+          ? output.value
+          : field === "previous"
+            ? output.previousPeriod?.value
+            : output.previousPeriod?.change;
+
+      if (value === null || value === undefined)
+        throw new Error(`${testCase.id}: expected ${field} has no value`);
+
+      return { value, near };
     }),
   );
 }
@@ -80,6 +139,7 @@ async function runTrial(testCase: EvalCase, trial: number): Promise<Trial> {
   const checks: TurnResult["check"][] = [];
   let inputTokens = 0;
   let cachedInputTokens = 0;
+  const drafts = memoryDrafts();
 
   const result = (error: string | null, grades: Grade[]): Trial => ({
     id: testCase.id,
@@ -91,6 +151,7 @@ async function runTrial(testCase: EvalCase, trial: number): Promise<Trial> {
     inputTokens,
     cachedInputTokens,
     checks,
+    saved: drafts.saved,
   });
 
   try {
@@ -104,6 +165,7 @@ async function runTrial(testCase: EvalCase, trial: number): Promise<Trial> {
         messages: [...messages],
         conceptEvents,
         now: EVAL_NOW,
+        drafts: drafts.port,
       });
 
       messages.push(...turn.responseMessages);
@@ -126,6 +188,7 @@ async function runTrial(testCase: EvalCase, trial: number): Promise<Trial> {
       turns,
       await expectedFacts(testCase),
       promptFacts(business, EVAL_NOW),
+      drafts.saved.length,
     );
 
     return result(null, grades);
@@ -141,6 +204,8 @@ function percentile(values: number[], fraction: number) {
 
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))] ?? 0;
 }
+
+const startedAt = Date.now();
 
 const jobs = selected.flatMap((testCase) =>
   Array.from({ length: Number(flags.k ?? TRIALS_BY_CATEGORY[testCase.category]) }, (_, trial) => ({
@@ -185,6 +250,7 @@ const summary = selected.map((testCase) => {
     trials: own.length,
     passed: own.filter(passed).length,
     errored: own.filter((trial) => trial.error !== null).length,
+    passHat3: passHat(own.length, own.filter(passed).length, 3),
     failedChecks,
   };
 });
@@ -203,6 +269,50 @@ const latencies = trials.map((trial) => trial.ms);
 const inputTokens = trials.reduce((sum, trial) => sum + trial.inputTokens, 0);
 const cached = trials.reduce((sum, trial) => sum + trial.cachedInputTokens, 0);
 
+const byTag = Object.fromEntries(
+  Map.groupBy(summary, (row) => `${row.suite}/${row.category}`)
+    .entries()
+    .map(([tag, rows]) => [
+      tag,
+      {
+        cases: rows.length,
+        passAll: rows.filter((row) => row.passed === row.trials).length,
+        passHat3: rows.reduce((sum, row) => sum + row.passHat3, 0) / rows.length,
+      },
+    ]),
+);
+
+const git = (...args: string[]) =>
+  Bun.spawnSync(["git", ...args], { cwd: import.meta.dir })
+    .stdout.toString()
+    .trim();
+
+const tools = {
+  ...createSalesTools(dataset, []),
+  ...createWriteTools(dataset, null),
+};
+
+const toolSchemas = await Promise.all(
+  Object.entries(tools).map(async ([name, definition]: [string, Tool]) => [
+    name,
+    definition.description,
+    await asSchema(definition.inputSchema).jsonSchema,
+  ]),
+);
+
+// U1: which model, code and prompt produced this run, so a score change can be traced to a change.
+const meta = {
+  model: `${chatModel.provider}/${chatModel.modelId}`,
+  commit: git("rev-parse", "HEAD"),
+  dirty: git("status", "--porcelain", "--", "..").length > 0,
+  promptHash: createHash("sha256")
+    .update(buildInstructions(business))
+    .update(JSON.stringify(toolSchemas))
+    .digest("hex"),
+  k: flags.k ?? "per category (Q5)",
+  startedAt: new Date(startedAt).toISOString(),
+};
+
 const totals = {
   status,
   cases: summary.length,
@@ -213,6 +323,7 @@ const totals = {
   inputTokens,
   cachedShare: inputTokens === 0 ? 0 : cached / inputTokens,
   now: EVAL_NOW.toISOString(),
+  byTag,
   // How often decision Q2 had to step in: dropped sentence, regenerate, code template, apology.
   actions: Object.fromEntries(
     Map.groupBy(
@@ -229,7 +340,15 @@ await Bun.write(
   trials.map((trial) => JSON.stringify(trial)).join("\n"),
 );
 
-await Bun.write(new URL("summary.json", runDir), JSON.stringify({ totals, summary }, null, 2));
+await Bun.write(
+  new URL("summary.json", runDir),
+  JSON.stringify({ meta, totals, summary }, null, 2),
+);
+
+await Bun.write(
+  new URL("report.md", runDir),
+  writeReport({ meta, totals, trials, cases: selected }),
+);
 
 for (const row of summary)
   console.log(
@@ -242,7 +361,12 @@ console.log(
     `number check ${JSON.stringify(totals.actions)}`,
 );
 
-console.log(`Transcripts: ${runDir.pathname}`);
+for (const [tag, row] of Object.entries(byTag))
+  console.log(
+    `${tag.padEnd(26)} ${row.passAll}/${row.cases} cases all-pass, pass^3 ${row.passHat3.toFixed(2)}`,
+  );
+
+console.log(`Run: ${runDir.pathname} (report.md has the failed transcripts)`);
 
 await db.$client.end();
 
