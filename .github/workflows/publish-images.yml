@@ -31,9 +31,9 @@ jobs:
       matrix:
         include:
           - app: api
-            dokploy_app_id_var: DOKPLOY_API_APPLICATION_ID
+            dokploy_webhook_secret: DOKPLOY_API_WEBHOOK_URL
           - app: web
-            dokploy_app_id_var: DOKPLOY_WEB_APPLICATION_ID
+            dokploy_webhook_secret: DOKPLOY_WEB_WEBHOOK_URL
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository }}-${{ matrix.app }}
     steps:
@@ -74,18 +74,14 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
 
-      # Skipped until the Dokploy application exists and its id is stored as a repository variable.
+      # Dokploy's webhook redeploys the configured image (:main) when the body names no image.
+      # Skipped until the application exists with Auto Deploy on and its webhook URL is a secret.
       - name: Redeploy on Dokploy
         env:
-          DOKPLOY_URL: ${{ vars.DOKPLOY_URL }}
-          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
-          APPLICATION_ID: ${{ vars[matrix.dokploy_app_id_var] }}
+          WEBHOOK_URL: ${{ secrets[matrix.dokploy_webhook_secret] }}
         run: |
-          if [ -z "$DOKPLOY_URL" ] || [ -z "$DOKPLOY_API_KEY" ] || [ -z "$APPLICATION_ID" ]; then
-            echo "Dokploy deploy not configured for ${{ matrix.app }}; image published only."
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "Dokploy webhook not configured for ${{ matrix.app }}; image published only."
             exit 0
           fi
-          curl --fail-with-body --silent --show-error -X POST "$DOKPLOY_URL/api/application.deploy" \
-            -H "Content-Type: application/json" \
-            -H "x-api-key: $DOKPLOY_API_KEY" \
-            -d "{\"applicationId\":\"$APPLICATION_ID\"}"
+          curl --fail-with-body --silent --show-error -X POST "$WEBHOOK_URL"
