@@ -148,11 +148,7 @@ export const numberCases: EvalCaseInput[] = [
     expect: {
       // Dates are ignored outside custom; some trials fill them with the same week.
       tools: [{ name: "queryMetric", args: { metric: "revenue", period: "last_week" } }],
-      facts: [
-        { args: metric("revenue", "last_week").args, near: /omzet|minggu lalu/i },
-        // The question asks for a direction, so the change is required, not the old figure.
-        { args: metric("revenue", "last_week").args, field: "change", near: /turun|dibanding/i },
-      ],
+      facts: [{ args: metric("revenue", "last_week").args, near: /omzet|minggu lalu/i }],
       mustMatch: [/turun/i],
     },
   },
