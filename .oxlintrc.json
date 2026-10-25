@@ -1,0 +1,153 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "import"],
+  "ignorePatterns": [
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
+    "tools/oxlint/anti-slop/**",
+    "**/dist/**",
+    "**/out/**",
+    "**/.next/**"
+  ],
+  "jsPlugins": [
+    {
+      "name": "anti-slop",
+      "specifier": "./tools/oxlint/anti-slop/index.ts"
+    },
+    {
+      "name": "thya",
+      "specifier": "./tools/oxlint/thya/index.ts"
+    },
+    "@shadcn/lint"
+  ],
+  "rules": {
+    "oxc/no-accumulating-spread": "error",
+    "anti-slop/no-array-filter-map": "error",
+    "anti-slop/no-reduce-accumulator-copy": "error",
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-shape-in-symbol-names": "error",
+    "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-unsafe-dictionary-type": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/require-readable-spacing": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "eslint/complexity": [
+      "error",
+      {
+        "max": 20,
+        "variant": "classic"
+      }
+    ],
+    "import/no-cycle": "error",
+    "import/no-duplicates": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/ban-ts-comment": "error",
+    "unicorn/prefer-string-slice": "error",
+    "unicorn/no-array-for-each": "error"
+  },
+  "overrides": [
+    {
+      "files": ["apps/web/**"],
+      "rules": {
+        "thya/no-css-properties": "error",
+        "thya/no-dynamic-class-fragments": "error",
+        "shadcn/no-inline-styles": "error",
+        "shadcn/no-raw-colors": [
+          "error",
+          {
+            "message": "\"{{className}}\" bukan warna tema Thya. Pakai {{suggestions|token warna dari @theme di apps/web/src/app/globals.css}}. Warna baru adalah keputusan desain: tambahkan di globals.css, jangan di komponen."
+          }
+        ],
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout"]
+          }
+        ],
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout"]
+          }
+        ],
+        "shadcn/require-static-classes": "error",
+        "shadcn/no-unknown-classes": "error",
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "motion/react",
+                "importNames": ["motion"],
+                "message": "Pakai `m` di dalam `LazyMotion` (features={domAnimation}), bukan `motion.*` penuh. Lihat docs/landing-styling.md bagian 7."
+              },
+              {
+                "name": "motion/react-client",
+                "importNames": ["motion"],
+                "message": "Pakai `m` di dalam `LazyMotion` (features={domAnimation}), bukan `motion.*` penuh. Lihat docs/landing-styling.md bagian 7."
+              },
+              {
+                "name": "framer-motion",
+                "message": "Paket yang disetujui adalah `motion`. Import dari `motion/react` atau `motion/react-m`."
+              }
+            ]
+          }
+        ],
+        "max-lines": [
+          "error",
+          {
+            "max": 200,
+            "skipBlankLines": true,
+            "skipComments": true
+          }
+        ],
+        "eslint/complexity": [
+          "error",
+          {
+            "max": 12,
+            "variant": "classic"
+          }
+        ],
+        "react/jsx-key": "error",
+        "react/no-array-index-key": "error",
+        "react/self-closing-comp": "error",
+        "react/no-danger": "error",
+        "react/jsx-boolean-value": "error",
+        "no-console": "error",
+        "typescript/no-non-null-assertion": "error"
+      },
+      "plugins": ["jsx-a11y", "nextjs"]
+    },
+    {
+      "files": ["apps/web/src/components/ui/**"],
+      "rules": {
+        "shadcn/no-restyle": "off"
+      }
+    }
+  ],
+  "settings": {
+    "shadcn": {
+      "note": "Aturan styling dan pengecualiannya: docs/landing-styling.md.",
+      "componentImports": ["^@/components(/|$)"]
+    }
+  }
+}

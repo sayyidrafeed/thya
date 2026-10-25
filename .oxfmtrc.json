@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "ignorePatterns": [
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
+    "tools/oxlint/anti-slop/**",
+    "docs/**",
+    "*.md",
+    "bun.lock",
+    "**/dist/**",
+    "**/out/**",
+    "**/.next/**"
+  ],
+  "sortTailwindcss": {
+    "stylesheet": "./apps/web/src/app/globals.css"
+  }
+}
