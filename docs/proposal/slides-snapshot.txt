@@ -1,0 +1,202 @@
+Chapter 1: Problem Statement
+A huge opportunity with a real adoption gap
+
+Indonesia’s UMKM sector drives the economy, but many owners, especially those with low digital adoption and literacy, still rely on manual processes to manage their daily operations
+1
+Industry Context
+UMKM are the backbone of Indonesia’s economy. They represent almost all business units and contribute more than half of GDP, making their productivity and competitiveness a national priority.
+~99% 
+of business units are UMKM 
+61,07%
+of Indonesia's GDP comes from UMKM
+2
+The Digitalization Paradox
+91.7%
+Digital payments and messaging apps are widely used with a 91,7% adoption rate, but…
+Procurement
+Inventory
+Bookkeeping
+are yet to be digitized with low adoption rates….
+3
+As-Is Business Process
+UMKM owners juggle multiple responsibilities from buying stock to serving customers, often without digital tools
+Identify needs of stock, payment, and customer requests
+Gather information by checking shelves, recalling past purchases, and contacting suppliers
+Make decisions and coordinate by comparing prices, negotiating, and arranging delivery
+Execute transaction by receiving goods, making payment, and handling discrepancies
+Updating records by tracking stock, expenses, and future needs
+4
+Digital Adoption Gap
+Limited time and digital skills
+Potential costs & infrastructure
+Fragmented information
+Low confidence
+Many tools require new apps, structured data entry, or a learning curve - things that can be difficult for owners with limited digital skills, time, or access
+Situation
+Complication
+Question
+Indonesia’s UMKM sector is vital to the economy, but digital adoption varies across businesses and function as many still rely on manual processes
+Owners with low digital adoption face repetitive coordination, fragmented information, and dependence on memory or handwritten records
+How can we enable UMKM owners with low digital adoption to manage essential business operations more efficiently?
+
+Chapter 2: Target User and Market
+Owners of UMKM across various sectors with low digital adoption
+“Saya sibuk ngurus pelanggan, jadi urusan stok dan supplier sering nggak sempat dicek.”
+                            UMKM Owner
+1
+Common Characteristics
+Owner/Decision Maker
+Business owners who handle multiple roles
+Low Digital Adoption
+Limited experience with digital tools
+Small Scale Operation
+1-5 employees with limited capital and time
+Wide Geographic Spread
+From urban areas to rural regions
+2
+Market Size
+64,2M
+Total UMKM in Indonesia (2024)
+A large and diverse market with significant room for digital support
+37,2%
+Trade
+13,3%
+Manufacturing
+12,7%
+Agriculture
+9,8%
+Accomodation
+3
+Digital Adoption Gap
+Digital tools are available, but adoption remains uneven, especially beyond basic communication and payments
+69,2%
+11,8%
+18,9%
+Moderate 
+High
+Low
+4
+Key Industries
+Food and Beverage
+Retail
+Services
+Manufacturing
+Agriculture & Fisheries
+We will start with a range of common and essential industries that represent the diversity of Indonesian UMKM
+By focusing on UMKM owners with low digital adoption, we can address a large and underserved segment,  helping them work more efficiently, stay competitive, and grow sustainably
+
+
+Meet Thya, Your AI Business Assistant
+Thya is an AI business agent designed to empower micro, small, and medium enterprises (MSMEs) with low digital adoption to simplify business management, organize records, and make data-informed decisions through accessible AI assistance.
+Through natural-language interaction, Thya enables business owners to organize their business records, understand sales and expenses, analyze business performance, and generate actionable insights without requiring advanced digital or data-analysis skills. Beyond answering questions, Thya aims to assist with practical business tasks, helping owners move from simply recording information to understanding what it means and determining what to do next.
+Our Vision
+To make intelligent digital business assistance accessible to every MSME, enabling business owners to manage their operations with greater confidence and make more informed decisions.
+Our Mission
+Simplifying digital adoption 
+1
+by providing an intuitive, conversational interface that reduces the learning barrier associated with business technology.
+Transforming business data into insights
+2
+by helping owners organize available records, understand performance, and identify potential opportunities for improvement.
+Reducing manual workloads
+3
+by assisting with routine calculations, data organization, and business reporting.
+Empowering informed decisions
+4
+by connecting understandable business insights with practical recommendations that support everyday operations.
+Current State
+Scattered business records across notebooks, receipts, and separate tools.
+Time-consuming manual calculations and reporting.
+Limited digital skills to interpret business data.
+Decisions based on intuition or incomplete information.
+Desired State
+Organized and accessible business information.
+Clear insights into business performance.
+Less manual work through AI assistance.
+More informed, data-driven decisions.
+Chapter 3: Proposed Solution
+
+Thya combines AI assistance, data management, and tool integrations to help MSMEs simplify daily operations and make smarter business decisions.
+AI Business Dashboard
+A centralized web platform where MSMEs can access business information, monitor performance, and view AI-generated insights in one place.
+AI Business Assistant
+An AI-powered assistant that answers business-related questions, analyzes available data, performs calculations, and provides actionable recommendations to support decision-making.
+Smart Data Management
+Organizes business records and connects with spreadsheets to simplify data entry, updates, calculations, and performance tracking.
+AI-Powered Task Automation
+Automates repetitive administrative tasks, such as preparing business summaries, organizing information, generating reports, and managing routine workflows, reducing manual effort for MSME owners.
+Integrated Communication & Productivity
+Connects Thya with WhatsApp for accessible AI assistance and notifications, and Google Calendar for scheduling, reminders, and routine business activities.
+Chapter 4: Key Feature & Tech Stack
+Tech Stack
+Key Feature
+Tech Stack
+Whatsapp User
+Chat - Ask - Request
+Whatsapp Business Platform
+Webhook - Message in/out
+Elysia API
+Auth - Validation - Routing
+LangGraph Agent
+Auth - Validation - Routing
+Next.js Landing Page
+Info - Monitoring - Analytics
+Business Data
+Postgres - Vector DB
+External Tools
+APIs - Integrations
+System Architecture
+
+Chapter 5: Product Demo
+Social Impact
+Thya helps MSME owners reduce time spent on repetitive administrative tasks. Preparing weekly sales and expense reports manually using spreadsheets can take around 2 hours per report. With Thya, owners can upload a spreadsheet link and prompt the AI to generate the report in approximately 10 minutes, including data processing and report generation.
+Example calculation per MSME
+Manual process
+120 min
+/ report
+Using Thya
+5 min
+/ report
+Time saved per report
+(120-5) = 115 Minutes
+Assuming 4 reports / month:
+115 x 4 = 460 minutes
+~ 7 Hours 40 Minutes saved/ month
+Also Thya goes beyond report generation by making everyday business operations more efficient through…
+Integrated tools for smoother communication and scheduling
+Business insights for smarter decisions
+Task automation to reduce repetitive work
+Business insights for smarter decisions
+
+Chapter 6: Competitive Advantage
+
+Chapter 7: Current Status & Development Plan
+
+Chapter 8: Business Model
+
+Chapter 9: Impact Plan
+
+Chapter 10: Roadmap & Future Direction
+
+Why Does This Matter?
+For culinary MSMEs, the challenge is not simply collecting business data, but making sense of it while keeping daily operations running. When business information is difficult to consolidate and analyze, owners may struggle to identify what is actually happening in their business. High sales figures, for instance, do not automatically indicate healthy profit margins, while frequent stock shortages or excess inventory may be difficult to anticipate without a clear understanding of sales patterns. These are potential challenges that need to be validated, rather than assumed to affect every culinary MSME.
+The central issue, therefore, is the gap between having business data and being able to turn it into actionable insights. Understanding this gap requires examining how culinary MSME owners currently manage their data, which tasks require the most time and effort, and how they use the information to make operational decisions.
+Situation
+Culinary MSMEs generate data from daily sales, purchases, expenses, inventory, and promotional activities to support business operations.
+Complication
+This information may be scattered across different tools or manual records, making it time-consuming to consolidate, analyze, and translate into useful business insights.
+Question
+How can culinary MSME owners better understand their business performance and make operational decisions without spending excessive time and effort analyzing their data?
+Chapter 1: Problem Analysis
+Keep Satisfied
+Manage Closely
+Minimal Effort
+Keep Informed
+
+What Is Happening to MSMEs in Indonesia?
+Micro, small, and medium-sized enterprises (MSMEs) are a major pillar of Indonesia’s economy. According to data compiled by the OECD, Indonesia had approximately 56.14 million MSMEs in 2024, accounting for 99.9% of the total business population and employing around 121.8 million workers [1]. Their sustainability therefore affects not only business owners, but also employees, suppliers, and the communities that depend on them.
+One particularly relevant sector is food and beverage. According to Statistics Indonesia (BPS), the country had approximately 5.28 million food and beverage service businesses in 2024, an increase of 8.71% from the previous year [2]. Behind these numbers are thousands of daily business operations that require owners to balance customer satisfaction, product quality, sales, and operating costs.
+Chapter 1: Problem Statement
+Running a Business Requires More Than Generating Sales
+Running a café or restaurant involves daily decisions about inventory, pricing, expenses, and promotions. These decisions are interconnected: rising ingredient costs can reduce profit margins, while promotions may increase sales without necessarily improving profitability. Changing consumer purchasing power can further complicate these decisions [3]. Making informed decisions requires more than experience or intuition. Owners need reliable information about their business, yet the data they generate through sales, purchases, expenses, and inventory may be scattered across spreadsheets, and any manual records. For example, knowing daily revenue does not necessarily reveal whether the business is profitable. Owners still need to combine sales figures, ingredient costs, and operating expenses to understand their actual performance.
+A Bank Indonesia study involving 10,142 ultra-micro, micro, and small businesses found that digital adoption is influenced by factors such as business characteristics, owner capabilities, and infrastructure availability [4]. While the study does not directly measure the time spent analyzing business data, it highlights that adopting digital tools alone does not guarantee that information can be used effectively. The key question is how much time and effort business owners spend turning operational data into meaningful insights and decisions. 
