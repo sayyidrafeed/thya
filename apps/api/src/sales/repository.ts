@@ -1,4 +1,5 @@
-import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import type { MenuCostArgs, SalesRecordArgs } from "../actions/kinds";
 import type { Db } from "../db/client";
 import { menuCosts, menuItems, transactions } from "../db/schema";
 import { DEMO_HISTORY_DAYS, demoHourlySales, demoMenu, type SalesDataset } from "./demo-shop";
@@ -174,4 +175,53 @@ export async function seedDemoSales(db: Db, businessId: string, now: Date) {
     from,
     through: addDays(today, DEMO_SEED_DAYS_AHEAD),
   };
+}
+
+// Q3: a sale typed in chat. No hour is known, so the rows count for their whole day.
+export async function recordChatSales(
+  db: Db,
+  { businessId, draftId, args }: { businessId: string; draftId: string; args: SalesRecordArgs },
+) {
+  const ids = [...new Set(args.items.map((item) => item.menuItemId))];
+
+  const owned = await db.$count(
+    menuItems,
+    and(eq(menuItems.businessId, businessId), inArray(menuItems.id, ids)),
+  );
+
+  if (owned !== ids.length) throw new Error("a sold item is not on this business's menu");
+
+  await db.insert(transactions).values(
+    args.items.map((item) => ({
+      businessId,
+      menuItemId: item.menuItemId,
+      soldOn: args.date,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      source: "chat" as const,
+      draftId,
+    })),
+  );
+}
+
+// A new cost per portion from `validFrom` on; earlier sales keep the cost in force on their date.
+export async function setMenuCost(
+  db: Db,
+  { businessId, draftId, args }: { businessId: string; draftId: string; args: MenuCostArgs },
+) {
+  const [item] = await db
+    .select({ id: menuItems.id })
+    .from(menuItems)
+    .where(and(eq(menuItems.id, args.menuItemId), eq(menuItems.businessId, businessId)));
+
+  if (!item) throw new Error(`menu item ${args.menuItemId} is not this business's`);
+
+  await db.insert(menuCosts).values({
+    menuItemId: item.id,
+    amount: args.amount,
+    source: args.source,
+    includesPackaging: args.includesPackaging,
+    validFrom: args.validFrom,
+    draftId,
+  });
 }

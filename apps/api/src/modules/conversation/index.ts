@@ -168,7 +168,7 @@ export async function pendingOutbound(db: Db, to: string): Promise<PendingOutbou
     .where(
       and(eq(outboundMessages.status, "pending"), sql`${outboundMessages.payload}->>'to' = ${to}`),
     )
-    .orderBy(asc(outboundMessages.createdAt), asc(outboundMessages.idempotencyKey));
+    .orderBy(asc(outboundMessages.sequence));
 
   return rows.map((row) => ({ id: row.id, payload: outboundPayloadSchema.parse(row.payload) }));
 }

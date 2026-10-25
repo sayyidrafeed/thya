@@ -13,7 +13,8 @@
     "eval": "bun --env-file=../../.env eval/run.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun --env-file=../../.env scripts/migrate.ts",
-    "db:seed": "bun --env-file=../../.env scripts/seed-demo.ts"
+    "db:seed": "bun --env-file=../../.env scripts/seed-demo.ts",
+    "phone:register": "bun --env-file=../../.env scripts/register-phone.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.78",

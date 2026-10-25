@@ -1,4 +1,5 @@
 import { convertToModelMessages, createUIMessageStream, type UIMessage } from "ai";
+import { demoDraftPort } from "./demo-drafts";
 import { runTurn, type TurnResult } from "../agent";
 import { toWhatsAppText } from "../channels/whatsapp/format";
 import type { Db } from "../db/client";
@@ -10,6 +11,7 @@ import { eventsFromHistory } from "../semantic/exposure";
 import { withTrace } from "../trace";
 
 const MAX_HISTORY_MESSAGES = 20;
+
 
 // The web demo sends its whole history each request (nothing is stored for it) and runs the same
 // turn as WhatsApp, on the seeded demo business in Postgres.
@@ -35,6 +37,7 @@ async function runDemoTurn(
     now,
     abortSignal,
     formatReply: toWhatsAppText,
+    drafts: demoDraftPort(messages),
   });
 
   let turn: TurnResult;
@@ -90,7 +93,10 @@ function replayTurn(run: () => Promise<TurnResult>) {
 
       writer.write({ type: "start-step" });
       writer.write({ type: "text-start", id: "reply" });
-      writer.write({ type: "text-delta", id: "reply", delta: turn.reply });
+      // No buttons on the web: the card's summary follows the reply and the owner types the answer.
+      const card = turn.draft ? `\n\n${turn.draft.summary}` : "";
+
+      writer.write({ type: "text-delta", id: "reply", delta: turn.reply + card });
       writer.write({ type: "text-end", id: "reply" });
       writer.write({ type: "finish-step" });
       writer.write({ type: "finish" });

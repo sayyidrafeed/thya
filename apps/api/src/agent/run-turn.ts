@@ -1,4 +1,6 @@
 import { generateText, isStepCount, type LanguageModel, type ModelMessage } from "ai";
+import { z } from "zod";
+import type { DraftPort } from "../actions/kinds";
 import type { BusinessProfile } from "../modules/business";
 import type { SalesDataset } from "../sales/demo-shop";
 import type { ConceptEvent } from "../semantic/exposure";
@@ -6,6 +8,7 @@ import { ungroundedNumbers, type UngroundedNumber } from "./postcheck";
 import { buildInstructions, promptFacts, renderTurnContext, withTurnContext } from "./prompt";
 import { fallbackReply } from "./fallback";
 import { createSalesTools, type SalesToolName } from "./tools";
+import { createWriteTools } from "./write-tools";
 
 export const MAX_STEPS = 5;
 
@@ -43,7 +46,12 @@ export type TurnInput = {
   abortSignal?: AbortSignal;
   // Channel formatting applied to the final reply (WhatsApp markup, decision U4).
   formatReply?: (reply: string) => string;
+  // Where write tools put drafts. Without it they answer that recording is not available here.
+  drafts?: DraftPort;
 };
+
+// The draft a write tool prepared this turn; the channel shows it as a card with Ya/Ubah/Batal.
+export type TurnDraft = { draftId: string; summary: string };
 
 export type TurnResult = {
   reply: string;
@@ -53,6 +61,7 @@ export type TurnResult = {
   attachments: Attachment[];
   conceptEvents: ConceptEvent[];
   check: { action: TurnAction; ungrounded: UngroundedNumber[]; attempts: number };
+  draft: TurnDraft | null;
   // Decision U1: SHA-256 of the system prompt plus every tool's name, description and input schema.
   promptHash: string;
   usage: { inputTokens: number; cachedInputTokens: number; outputTokens: number };
@@ -74,9 +83,12 @@ async function attempt(
   const conceptEvents = [...input.conceptEvents];
   const rounds = new Map<string, number>();
 
-  const tools = createSalesTools(input.dataset, conceptEvents, {
-    exhausted: (name) => (rounds.get(name) ?? 0) >= (TOOL_ROUND_LIMITS.get(name) ?? Infinity),
-  });
+  const tools = {
+    ...createSalesTools(input.dataset, conceptEvents, {
+      exhausted: (name) => (rounds.get(name) ?? 0) >= (TOOL_ROUND_LIMITS.get(name) ?? Infinity),
+    }),
+    ...createWriteTools(input.dataset, input.drafts ?? null),
+  };
 
   const result = await generateText({
     model: input.model,
@@ -190,8 +202,27 @@ function grounded(input: TurnInput, chosen: Attempt) {
   return { reply: dropped, ungrounded };
 }
 
+const draftOutputSchema = z.object({
+  status: z.literal("draft"),
+  draftId: z.string(),
+  summary: z.string(),
+});
+
+function lastDraft(toolCalls: TurnToolCall[]): TurnDraft | null {
+  const drafts = toolCalls.flatMap((call) => {
+    const parsed = draftOutputSchema.safeParse(call.output);
+
+    return parsed.success ? [{ draftId: parsed.data.draftId, summary: parsed.data.summary }] : [];
+  });
+
+  return drafts.at(-1) ?? null;
+}
+
 function promptHash(input: TurnInput): string {
-  const tools = createSalesTools(input.dataset, []);
+  const tools = {
+    ...createSalesTools(input.dataset, []),
+    ...createWriteTools(input.dataset, null),
+  };
 
   const definitions = Object.entries(tools).map(([name, definition]) => [
     name,
@@ -228,6 +259,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
       attachments: [],
       conceptEvents: chosen.conceptEvents,
       check: { action, ungrounded, attempts: tries },
+      draft: lastDraft(chosen.toolCalls),
       promptHash: promptHash(input),
       usage: sumUsage(attempts),
     };

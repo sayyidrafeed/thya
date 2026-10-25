@@ -278,6 +278,8 @@ export const outboundStatus = pgEnum("outbound_status", ["pending", "sent", "fai
 
 export const outboundMessages = pgTable("outbound_messages", {
   id: uuid().primaryKey().defaultRandom(),
+  // Insert order: rows written in one transaction share created_at, and a reply goes before its card.
+  sequence: bigint({ mode: "number" }).generatedAlwaysAsIdentity(),
   idempotencyKey: text().notNull().unique(),
   businessId: uuid().references(() => businesses.id),
   traceId: uuid(),

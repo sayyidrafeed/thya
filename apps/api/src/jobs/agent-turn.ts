@@ -1,9 +1,10 @@
 import type { LanguageModel, ModelMessage } from "ai";
-import { runTurn, type TurnResult } from "../agent";
-import { TEXT_LIMIT } from "../channels/whatsapp/client";
+import { cancelOpenDraft, dbDraftPort, runDraft } from "../actions";
+import { runTurn, type TurnDraft, type TurnResult } from "../agent";
+import { CAPTION_LIMIT, TEXT_LIMIT } from "../channels/whatsapp/client";
 import { deliverPending, type Delivery } from "../channels/whatsapp/deliver";
 import { toWhatsAppText, splitText } from "../channels/whatsapp/format";
-import { messageSchema, readContent, type InboundContent } from "../channels/whatsapp/inbound";
+import { messageSchema, readContent } from "../channels/whatsapp/inbound";
 import type { Db } from "../db/client";
 import { findBusinessByPhone, type Business } from "../modules/business";
 import {
@@ -40,6 +41,10 @@ export const REPLIES = {
   failed: "Maaf Kak, Thya lagi gangguan. Coba kirim ulang sebentar lagi ya.",
 };
 
+// Decision Q1 / A15: the card is its own message and its buttons carry the draft id, so a tap is
+// handled by code without the model.
+const DRAFT_BUTTON = /^draft:([0-9a-f-]{36}):(yes|edit|cancel)$/;
+
 function textOutbound(to: string, key: string, text: string): Outbound[] {
   return splitText(text, TEXT_LIMIT).map((piece, index) => ({
     key: `${key}:${index}`,
@@ -47,12 +52,80 @@ function textOutbound(to: string, key: string, text: string): Outbound[] {
   }));
 }
 
-function ownerText(content: InboundContent): string | null {
-  if (content.kind === "text") return content.text;
+function draftCard(to: string, draft: TurnDraft): Outbound {
+  return {
+    key: `card:${draft.draftId}`,
+    payload: {
+      type: "buttons",
+      to,
+      body: draft.summary.slice(0, CAPTION_LIMIT),
+      buttons: [
+        { id: `draft:${draft.draftId}:yes`, title: "Ya" },
+        { id: `draft:${draft.draftId}:edit`, title: "Ubah" },
+        { id: `draft:${draft.draftId}:cancel`, title: "Batal" },
+      ],
+    },
+  };
+}
 
-  if (content.kind === "button") return content.title;
+type Tap = { wamid: string; tapped: string; reply: string };
 
-  return null;
+// Owner words for the model, in arrival order, plus the taps code already answered.
+type Batch = { texts: string[]; answered: Tap[] };
+
+type InboundRow = Awaited<ReturnType<typeof unprocessedInbound>>[number];
+
+async function answerTap(
+  deps: AgentTurnDeps,
+  business: Business,
+  { draftId, action }: { draftId: string; action: string },
+) {
+  const where = { businessId: business.id, draftId, now: deps.now() };
+
+  if (action === "yes") return { reply: (await runDraft(deps.db, where)).message, edit: false };
+
+  const cancelled = await cancelOpenDraft(deps.db, where);
+
+  // "Ubah" = cancel, then the model asks what to change and drafts again (Q1, features §4.3).
+  if (action === "edit" && cancelled.status === "done") return { reply: null, edit: true };
+
+  return { reply: cancelled.message, edit: false };
+}
+
+async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundRow[]) {
+  const batch: Batch = { texts: [], answered: [] };
+
+  for (const row of rows) {
+    const content = readContent(messageSchema.parse(row.payload));
+
+    if (content.kind === "text") batch.texts.push(content.text);
+
+    if (content.kind !== "button") continue;
+
+    const [, draftId, action] = DRAFT_BUTTON.exec(content.id) ?? [];
+
+    // A button Thya did not make reads as the words on it.
+    if (draftId === undefined || action === undefined) {
+      batch.texts.push(content.title);
+      continue;
+    }
+
+    const { reply, edit } = await answerTap(deps, business, { draftId, action });
+
+    if (edit) batch.texts.push(content.title);
+
+    if (reply !== null) batch.answered.push({ wamid: row.wamid, tapped: content.title, reply });
+  }
+
+  return batch;
+}
+
+// Code-written replies still join the thread, so the model knows a draft was saved or dropped.
+function tapHistory(answered: Tap[]): ModelMessage[] {
+  return answered.flatMap(({ tapped, reply }): ModelMessage[] => [
+    { role: "user", content: tapped },
+    { role: "assistant", content: reply },
+  ]);
 }
 
 async function runAgent(deps: AgentTurnDeps, business: Business, texts: string[], traceId: string) {
@@ -69,6 +142,7 @@ async function runAgent(deps: AgentTurnDeps, business: Business, texts: string[]
     conceptEvents: known,
     now,
     formatReply: toWhatsAppText,
+    drafts: dbDraftPort(db, { businessId: business.id, traceId, now }),
   });
 
   await appendConceptEvents(
@@ -120,13 +194,18 @@ async function answer(
       return;
     }
 
-    const outbound = textOutbound(phone, key, result.turn.reply);
+    const { owner, turn } = result;
+
+    const outbound = [
+      ...textOutbound(phone, key, turn.reply),
+      ...(turn.draft ? [draftCard(phone, turn.draft)] : []),
+    ];
 
     await commitTurn(deps.db, {
       businessId: business.id,
       traceId,
       wamids,
-      history: [result.owner, ...result.turn.responseMessages],
+      history: [owner, ...turn.responseMessages],
       outbound,
     });
 
@@ -134,7 +213,7 @@ async function answer(
       traceId,
       businessId: business.id,
       channel: "whatsapp",
-      turn: result.turn,
+      turn,
       durationMs: Date.now() - started,
       outboundMessages: outbound.length,
       model: deps.model.modelId,
@@ -159,7 +238,7 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
   const business = await findBusinessByPhone(db, phone);
   const day = jakartaDate(now);
 
-  const reject = async (key: string, text: string) => {
+  const reply = async (key: string, text: string) => {
     await commitTurn(db, {
       businessId: business?.id ?? null,
       traceId: newTraceId(),
@@ -171,24 +250,33 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
     await deliverPending(delivery, phone);
   };
 
-  if (business === null) return reject(`unregistered:${phone}:${day}`, REPLIES.unregistered);
+  if (business === null) return reply(`unregistered:${phone}:${day}`, REPLIES.unregistered);
 
   const recent = await countInboundSince(db, phone, new Date(now.getTime() - RATE_LIMIT.windowMs));
   const minute = Math.floor(now.getTime() / RATE_LIMIT.windowMs);
 
-  if (recent > RATE_LIMIT.messages)
-    return reject(`throttled:${phone}:${minute}`, REPLIES.throttled);
+  if (recent > RATE_LIMIT.messages) return reply(`throttled:${phone}:${minute}`, REPLIES.throttled);
 
   const lastWamid = wamids.at(-1);
 
   // Read receipt + typing indicator are courtesy; a failure must not cost the reply.
   if (lastWamid) await delivery.client.markRead(lastWamid).catch(() => {});
 
-  const contents = rows.map((row) => readContent(messageSchema.parse(row.payload)));
-  const texts = contents.map(ownerText).filter((text) => text !== null);
+  const batch = await readBatch(deps, business, rows);
 
-  if (texts.length === 0) return reject(`unsupported:${lastWamid}`, REPLIES.unsupported);
+  if (batch.texts.length === 0 && batch.answered.length === 0)
+    return reply(`unsupported:${lastWamid}`, REPLIES.unsupported);
 
-  await answer(deps, { business, phone, wamids, texts });
+  // Taps go first, so "Ya" then a question reads in the order the owner sent them.
+  await commitTurn(db, {
+    businessId: business.id,
+    traceId: newTraceId(),
+    wamids: batch.texts.length === 0 ? wamids : [],
+    history: tapHistory(batch.answered),
+    outbound: batch.answered.flatMap((tap) => textOutbound(phone, `tap:${tap.wamid}`, tap.reply)),
+  });
+
+  if (batch.texts.length > 0) await answer(deps, { business, phone, wamids, texts: batch.texts });
+
   await deliverPending(delivery, phone);
 }

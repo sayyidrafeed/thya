@@ -15,6 +15,13 @@
       "when": 1792946536919,
       "tag": "0001_trace_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792947217160,
+      "tag": "0002_outbound_order",
+      "breakpoints": true
     }
   ]
 }
