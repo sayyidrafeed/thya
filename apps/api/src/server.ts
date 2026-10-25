@@ -6,6 +6,7 @@ import { runMigrations } from "./db/migrate";
 import { env, whatsapp } from "./env";
 import { demoChatStream } from "./http/demo";
 import { whatsappWebhook } from "./http/whatsapp";
+import { loadDemoAttachment } from "./modules/attachments";
 import { ensureDemoBusiness } from "./modules/business";
 import { hasSales, seedDemoSales } from "./sales/repository";
 import { newTraceId } from "./trace";
@@ -55,6 +56,18 @@ export const app = new Elysia({ serve: { maxRequestBodySize: 256 * 1024 } })
     }
   })
   .get("/health", () => ({ ok: true }))
+  // Pictures from showChart for the web demo only (features §4.2); real businesses' never leave by HTTP.
+  .get("/attachments/:id", async ({ params, status }) => {
+    if (!z.uuid().safeParse(params.id).success) return status(404, "not found");
+
+    const png = await loadDemoAttachment(db, params.id, new Date());
+
+    if (png === null) return status(404, "not found");
+
+    return new Response(png, {
+      headers: { "content-type": "image/png", "cache-control": "public, max-age=86400, immutable" },
+    });
+  })
   .use(whatsapp && boss ? whatsappWebhook(db, boss, whatsapp) : new Elysia())
   .post(
     "/demo/chat",

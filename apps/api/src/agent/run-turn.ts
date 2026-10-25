@@ -9,6 +9,7 @@ import { buildInstructions, promptFacts, renderTurnContext, withTurnContext } fr
 import { fallbackReply } from "./fallback";
 import { createSalesTools, type SalesToolName } from "./tools";
 import { createWriteTools } from "./write-tools";
+import { createChartTool, type Attachment, type AttachmentPort } from "./chart-tool";
 
 export const MAX_STEPS = 5;
 
@@ -18,12 +19,7 @@ const TURN_TIMEOUT_MS = 40_000;
 // Decision Q7: rounds (steps that call the tool), not individual calls.
 const TOOL_ROUND_LIMITS = new Map<SalesToolName, number>([["queryMetric", 4]]);
 
-export type Attachment = {
-  id: string;
-  kind: "chart" | "summary_card";
-  mime: "image/png";
-  bytes: number;
-};
+export type { Attachment, AttachmentPort } from "./chart-tool";
 
 export type TurnToolCall = {
   toolCallId: string;
@@ -48,6 +44,8 @@ export type TurnInput = {
   formatReply?: (reply: string) => string;
   // Where write tools put drafts. Without it they answer that recording is not available here.
   drafts?: DraftPort;
+  // Where showChart stores its picture. Without it the tool still answers with the points.
+  attachments?: AttachmentPort;
 };
 
 // The draft a write tool prepared this turn; the channel shows it as a card with Ya/Ubah/Batal.
@@ -69,6 +67,7 @@ export type TurnResult = {
 
 type Attempt = {
   text: string;
+  attachments: Attachment[];
   toolCalls: TurnToolCall[];
   responseMessages: ModelMessage[];
   conceptEvents: ConceptEvent[];
@@ -81,6 +80,7 @@ async function attempt(
   { feedback, requireTool }: { feedback: string | null; requireTool: boolean },
 ): Promise<Attempt> {
   const conceptEvents = [...input.conceptEvents];
+  const attachments: Attachment[] = [];
   const rounds = new Map<string, number>();
 
   const tools = {
@@ -88,6 +88,7 @@ async function attempt(
       exhausted: (name) => (rounds.get(name) ?? 0) >= (TOOL_ROUND_LIMITS.get(name) ?? Infinity),
     }),
     ...createWriteTools(input.dataset, input.drafts ?? null),
+    ...createChartTool(input.dataset, input.attachments ?? null, attachments),
   };
 
   const result = await generateText({
@@ -115,6 +116,7 @@ async function attempt(
 
   return {
     text: result.text.trim(),
+    attachments,
     toolCalls: result.steps
       .flatMap((step) => step.toolCalls)
       .map(({ toolCallId, toolName, input: args }) => ({
@@ -256,7 +258,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
       reply,
       responseMessages: withReply(chosen.responseMessages, reply),
       toolCalls: chosen.toolCalls,
-      attachments: [],
+      attachments: chosen.attachments,
       conceptEvents: chosen.conceptEvents,
       check: { action, ungrounded, attempts: tries },
       draft: lastDraft(chosen.toolCalls),

@@ -1,5 +1,5 @@
 import type { LanguageModel, ModelMessage } from "ai";
-import { cancelOpenDraft, dbDraftPort, runDraft } from "../actions";
+import { attachmentPort, cancelOpenDraft, dbDraftPort, runDraft } from "../actions";
 import { runTurn, type TurnDraft, type TurnResult } from "../agent";
 import { CAPTION_LIMIT, TEXT_LIMIT } from "../channels/whatsapp/client";
 import { deliverPending, type Delivery } from "../channels/whatsapp/deliver";
@@ -50,6 +50,21 @@ function textOutbound(to: string, key: string, text: string): Outbound[] {
     key: `${key}:${index}`,
     payload: { type: "text", to, text: piece },
   }));
+}
+
+// Decision Q6 (widened): a reply with a picture is the picture with the reply as its caption; only
+// a reply over the caption limit adds a second message with the rest.
+function replyOutbound(to: string, key: string, turn: TurnResult): Outbound[] {
+  const [picture] = turn.attachments;
+
+  if (picture === undefined) return textOutbound(to, key, turn.reply);
+
+  const [caption = "", ...rest] = splitText(turn.reply, CAPTION_LIMIT);
+
+  return [
+    { key: `${key}:image`, payload: { type: "image", to, attachmentId: picture.id, caption } },
+    ...(rest.length > 0 ? textOutbound(to, `${key}:rest`, rest.join("\n\n")) : []),
+  ];
 }
 
 function draftCard(to: string, draft: TurnDraft): Outbound {
@@ -143,6 +158,7 @@ async function runAgent(deps: AgentTurnDeps, business: Business, texts: string[]
     now,
     formatReply: toWhatsAppText,
     drafts: dbDraftPort(db, { businessId: business.id, traceId, now }),
+    attachments: attachmentPort(db, business.id, now),
   });
 
   await appendConceptEvents(
@@ -197,7 +213,7 @@ async function answer(
     const { owner, turn } = result;
 
     const outbound = [
-      ...textOutbound(phone, key, turn.reply),
+      ...replyOutbound(phone, key, turn),
       ...(turn.draft ? [draftCard(phone, turn.draft)] : []),
     ];
 

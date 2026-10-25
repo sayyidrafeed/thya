@@ -1,4 +1,5 @@
 import { convertToModelMessages, createUIMessageStream, type UIMessage } from "ai";
+import { attachmentPort } from "../actions";
 import { demoDraftPort } from "./demo-drafts";
 import { runTurn, type TurnResult } from "../agent";
 import { toWhatsAppText } from "../channels/whatsapp/format";
@@ -37,6 +38,8 @@ async function runDemoTurn(
     abortSignal,
     formatReply: toWhatsAppText,
     drafts: demoDraftPort(messages),
+    // Demo charts are stored like WhatsApp ones and served by GET /attachments/:id.
+    attachments: attachmentPort(db, business.id, now),
   });
 
   let turn: TurnResult;

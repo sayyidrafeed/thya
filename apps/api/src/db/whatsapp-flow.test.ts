@@ -7,12 +7,14 @@ import { fakeGraph, signWebhook, textMessage, webhookBody } from "../channels/wh
 import { whatsappWebhook } from "../http/whatsapp";
 import { createBoss, startJobs } from "../jobs";
 import { handleAgentTurn, REPLIES, type AgentTurnDeps } from "../jobs/agent-turn";
+import { scriptedModel } from "../agent/testing";
+import { loadAttachment, loadDemoAttachment } from "../modules/attachments";
 import { createPhoneBusiness } from "../modules/business";
 import { loadHistory } from "../modules/conversation";
 import { demoBusiness } from "../sales/demo-shop";
 import { seedDemoSales } from "../sales/repository";
 import type { Db } from "./client";
-import { inboundMessages, outboundMessages } from "./schema";
+import { attachments, inboundMessages, outboundMessages } from "./schema";
 import { freshTestDb, integration } from "./testing";
 
 const NOW = new Date("2026-10-25T14:00:00+07:00");
@@ -194,5 +196,44 @@ describe.if(integration)("whatsapp flow", () => {
     await handleAgentTurn(run, OWNER);
 
     expect(run.graph.sent().map((body) => body.text.body)).toEqual([REPLIES.throttled]);
+  });
+
+  test("a chart reply goes out as one picture with the reply as its caption (S2-AC1, AC4)", async () => {
+    await deliver(webhookBody([textMessage("wamid.chart", "kasih grafik omzet 7 hari terakhir")]));
+
+    const model = scriptedModel([
+      {
+        tool: "showChart",
+        input: {
+          view: "daily_revenue",
+          period: "last_7_days",
+          startDate: null,
+          endDate: null,
+          sortBy: null,
+          limit: null,
+        },
+      },
+      { text: "Ini grafik omzet 7 hari terakhir, Kak." },
+    ]);
+
+    const run = deps(fakeGraph(), model);
+
+    run.delivery.loadImage = (id) => loadAttachment(db, id, NOW);
+    await handleAgentTurn(run, OWNER);
+    await handleAgentTurn(run, OWNER);
+
+    expect(run.graph.calls.filter((call) => call.url.endsWith("/media"))).toHaveLength(1);
+    expect(run.graph.sent()).toEqual([
+      expect.objectContaining({
+        type: "image",
+        image: expect.objectContaining({ caption: "Ini grafik omzet 7 hari terakhir, Kak." }),
+      }),
+    ]);
+
+    // A real business's picture is never served over HTTP; only the demo shop's are.
+    const [row] = await db.select({ id: attachments.id }).from(attachments);
+
+    expect(await loadDemoAttachment(db, row?.id ?? "", NOW)).toBeNull();
+    expect(await loadAttachment(db, row?.id ?? "", NOW)).not.toBeNull();
   });
 });

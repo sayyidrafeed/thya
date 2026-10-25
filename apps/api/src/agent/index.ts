@@ -1,6 +1,13 @@
 export { runTurn, MAX_STEPS } from "./run-turn";
 
-export type { Attachment, TurnDraft, TurnInput, TurnResult, TurnToolCall } from "./run-turn";
+export type {
+  Attachment,
+  AttachmentPort,
+  TurnDraft,
+  TurnInput,
+  TurnResult,
+  TurnToolCall,
+} from "./run-turn";
 
 export { promptFacts } from "./prompt";
 

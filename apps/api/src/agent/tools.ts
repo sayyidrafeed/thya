@@ -42,7 +42,7 @@ const MAX_DAILY_RANGE_DAYS = 31;
 
 // Every field is required (nullable when not applicable): DeepSeek V4.1 Flash on NetraRuntime
 // fills only one of several optional fields, e.g. sends startDate but drops endDate.
-const periodFields = {
+export const periodFields = {
   period: z
     .enum(PERIODS)
     .describe(

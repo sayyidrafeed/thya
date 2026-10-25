@@ -1,4 +1,6 @@
+import type { AttachmentPort } from "../agent";
 import type { Db } from "../db/client";
+import { saveAttachment } from "../modules/attachments";
 import {
   cancelDraft,
   claimDraft,
@@ -138,4 +140,8 @@ export function dbDraftPort(
         : cancelOpenDraft(db, { businessId, draftId: open.id, now });
     },
   };
+}
+
+export function attachmentPort(db: Db, businessId: string, now: Date): AttachmentPort {
+  return { save: (kind, png) => saveAttachment(db, { businessId, kind, png, now }) };
 }
