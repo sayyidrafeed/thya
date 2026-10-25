@@ -20,7 +20,7 @@ const cardLabel = "font-mono text-label text-ink-muted uppercase";
 export function ProblemDiagram() {
   return (
     <Reveal className="w-full">
-      <div className="grid w-full items-stretch md:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1.15fr)_7rem_minmax(0,1fr)]">
+      <div className="grid w-full grid-cols-1 items-stretch md:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1.15fr)_7rem_minmax(0,1fr)]">
         <div className="flex flex-col gap-5 rounded-card border border-line bg-surface-raised p-5 shadow-card">
           <p className={cardLabel}>{diagram.sources.title}</p>
           <ul className="grid grid-cols-2 gap-2">

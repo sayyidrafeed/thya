@@ -26,7 +26,7 @@ export function HowItWorks() {
         eyebrow="How it works"
         title={<span id="how-it-works-title">{howItWorksHeading}</span>}
       />
-      <div className="grid gap-16 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      <div className="grid grid-cols-1 gap-16 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <ol ref={listRef} className="flex flex-col gap-16 md:gap-0">
           {howItWorksSteps.map((step, index) => (
             <li

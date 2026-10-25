@@ -27,7 +27,7 @@ const wordPlacement = [
 // Option A: the character. The mascot breathes in a soft panel with the shop words it answers about.
 export function MeetThyaCharacter() {
   return (
-    <div className="mx-auto grid w-full max-w-page items-center gap-10 px-4 sm:px-6 md:grid-cols-2 md:gap-16">
+    <div className="mx-auto grid w-full max-w-page grid-cols-1 items-center gap-10 px-4 sm:px-6 md:grid-cols-2 md:gap-16">
       <div className="relative grid min-h-96 place-items-center overflow-hidden rounded-panel bg-brand-soft">
         <m.div
           animate={{ y: [0, -8, 0] }}
@@ -54,7 +54,7 @@ export function MeetThyaCharacter() {
           title={<span id="meet-thya-title">{meetThya.heading}</span>}
           lead={meetThya.lead}
         />
-        <ul className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
           {thyaTraits.map((trait) => {
             const Icon = traitIcon[trait.id];
 

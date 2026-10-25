@@ -18,7 +18,7 @@ export function MeetThyaGlossary() {
           lead={meetThya.glossaryLead}
         />
       </div>
-      <ul className="grid gap-3 sm:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {glossary.map((entry, index) => (
           <li key={entry.term}>
             <Reveal delay={index * 0.06} className="h-full">

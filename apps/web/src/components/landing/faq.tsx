@@ -20,7 +20,7 @@ export function Faq() {
     <section
       id="faq"
       aria-labelledby="faq-title"
-      className="mx-auto grid w-full max-w-page scroll-mt-16 gap-10 px-4 py-section sm:px-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:gap-0"
+      className="mx-auto grid w-full max-w-page scroll-mt-16 grid-cols-1 gap-10 px-4 py-section sm:px-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:gap-0"
     >
       <div className="md:border-r md:border-line md:pr-12">
         <p className="mb-4 font-mono text-label text-brand uppercase">FAQ</p>
