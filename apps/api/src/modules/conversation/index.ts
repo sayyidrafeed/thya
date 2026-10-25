@@ -1,8 +1,9 @@
 import type { ModelMessage } from "ai";
-import { desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, max, sql } from "drizzle-orm";
+import { z } from "zod";
 import { repairHistory } from "../../agent";
 import type { Db } from "../../db/client";
-import { messages } from "../../db/schema";
+import { inboundMessages, messages, outboundMessages } from "../../db/schema";
 
 // Recent turns sent to the model. Compaction (B1) takes over once the thread passes its threshold.
 const HISTORY_MESSAGES = 40;
@@ -40,4 +41,153 @@ export async function loadHistory(db: Db, businessId: string): Promise<ModelMess
   const start = ordered.findIndex((message) => message.role === "user");
 
   return start === -1 ? [] : repairHistory(ordered.slice(start));
+}
+
+// Inbound WhatsApp messages: the wamid primary key drops a redelivered webhook (harness §4).
+export type InboundRow = {
+  wamid: string;
+  phone: string;
+  type: string;
+  payload: object;
+  receivedAt: Date;
+};
+
+export async function recordInbound(db: Db, rows: InboundRow[]) {
+  if (rows.length === 0) return;
+
+  await db.insert(inboundMessages).values(rows).onConflictDoNothing();
+}
+
+// Oldest first. The agent-turn queue runs one job per phone at a time, so no row lock is needed.
+export async function unprocessedInbound(db: Db, phone: string) {
+  return db
+    .select()
+    .from(inboundMessages)
+    .where(and(eq(inboundMessages.phone, phone), isNull(inboundMessages.processedAt)))
+    .orderBy(asc(inboundMessages.receivedAt), asc(inboundMessages.wamid));
+}
+
+export async function countInboundSince(db: Db, phone: string, since: Date) {
+  return db.$count(
+    inboundMessages,
+    and(eq(inboundMessages.phone, phone), gte(inboundMessages.receivedAt, since)),
+  );
+}
+
+export async function lastInboundAt(db: Db, businessId: string): Promise<Date | null> {
+  const [row] = await db
+    .select({ at: max(inboundMessages.receivedAt) })
+    .from(inboundMessages)
+    .where(eq(inboundMessages.businessId, businessId));
+
+  return row?.at ?? null;
+}
+
+// Outbound WhatsApp messages (engine-plan A13). A turn's reply is written here in the same
+// transaction that stores the turn, then delivered; a retried job finds the row instead of
+// running the model again, and the idempotency key stops a second insert.
+export const outboundPayloadSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), to: z.string(), text: z.string() }),
+  z.object({
+    type: z.literal("image"),
+    to: z.string(),
+    attachmentId: z.string(),
+    caption: z.string().nullable(),
+  }),
+  z.object({
+    type: z.literal("buttons"),
+    to: z.string(),
+    body: z.string(),
+    buttons: z
+      .array(z.object({ id: z.string(), title: z.string() }))
+      .min(1)
+      .max(3),
+  }),
+  z.object({
+    type: z.literal("template"),
+    to: z.string(),
+    name: z.string(),
+    language: z.string(),
+    bodyParams: z.array(z.string()),
+    attachmentId: z.string().nullable(),
+  }),
+]);
+
+export type OutboundPayload = z.infer<typeof outboundPayloadSchema>;
+
+export type Outbound = { key: string; payload: OutboundPayload };
+
+export type TurnCommit = {
+  businessId: string | null;
+  traceId: string;
+  wamids: string[];
+  history: ModelMessage[];
+  outbound: Outbound[];
+};
+
+export async function commitTurn(db: Db, commit: TurnCommit) {
+  const { businessId, traceId, wamids, history, outbound } = commit;
+
+  await db.transaction(async (tx) => {
+    if (businessId !== null && history.length > 0)
+      await tx
+        .insert(messages)
+        .values(
+          history.map((message) => ({ businessId, traceId, source: "whatsapp" as const, message })),
+        );
+
+    if (wamids.length > 0)
+      await tx
+        .update(inboundMessages)
+        .set({ processedAt: new Date(), businessId, traceId })
+        .where(inArray(inboundMessages.wamid, wamids));
+
+    if (outbound.length > 0)
+      await tx
+        .insert(outboundMessages)
+        .values(
+          outbound.map(({ key, payload }) => ({
+            idempotencyKey: key,
+            businessId,
+            traceId,
+            kind: payload.type,
+            payload,
+          })),
+        )
+        .onConflictDoNothing();
+  });
+}
+
+export type PendingOutbound = { id: string; payload: OutboundPayload };
+
+// In insert order, so a reply's text always goes before its confirmation card.
+export async function pendingOutbound(db: Db, to: string): Promise<PendingOutbound[]> {
+  const rows = await db
+    .select({ id: outboundMessages.id, payload: outboundMessages.payload })
+    .from(outboundMessages)
+    .where(
+      and(eq(outboundMessages.status, "pending"), sql`${outboundMessages.payload}->>'to' = ${to}`),
+    )
+    .orderBy(asc(outboundMessages.createdAt), asc(outboundMessages.idempotencyKey));
+
+  return rows.map((row) => ({ id: row.id, payload: outboundPayloadSchema.parse(row.payload) }));
+}
+
+export async function markOutbound(
+  db: Db,
+  id: string,
+  result: { status: "sent"; wamid: string } | { status: "failed"; error: string },
+) {
+  await db
+    .update(outboundMessages)
+    .set(
+      result.status === "sent"
+        ? { status: "sent", wamid: result.wamid, sentAt: new Date() }
+        : { status: "failed", error: result.error },
+    )
+    .where(eq(outboundMessages.id, id));
+}
+
+export async function countOutbound(db: Db, traceId: string) {
+  return db.$count(outboundMessages, eq(outboundMessages.traceId, traceId));
 }

@@ -120,6 +120,7 @@ describe.if(integration)("postgres", () => {
       channel: "demo",
       durationMs: 1_200,
       outboundMessages: 1,
+      model: "deepseek/deepseek-v4.1-flash",
       turn: {
         reply: "Omzet Rp1.000.",
         responseMessages: [],
@@ -129,6 +130,7 @@ describe.if(integration)("postgres", () => {
         attachments: [],
         conceptEvents: [],
         check: { action: "none", ungrounded: [], attempts: 1 },
+        promptHash: "test",
         usage: { inputTokens: 10, cachedInputTokens: 5, outputTokens: 3 },
       },
     });

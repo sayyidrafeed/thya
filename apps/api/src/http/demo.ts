@@ -1,5 +1,6 @@
 import { convertToModelMessages, createUIMessageStream, type UIMessage } from "ai";
 import { runTurn, type TurnResult } from "../agent";
+import { toWhatsAppText } from "../channels/whatsapp/format";
 import type { Db } from "../db/client";
 import { chatModel } from "../llm";
 import { findDemoBusiness } from "../modules/business";
@@ -33,6 +34,7 @@ async function runDemoTurn(
     conceptEvents: eventsFromHistory(messages),
     now,
     abortSignal,
+    formatReply: toWhatsAppText,
   });
 
   let turn: TurnResult;
@@ -59,6 +61,7 @@ async function runDemoTurn(
     turn,
     durationMs: Date.now() - started,
     outboundMessages: 1,
+    model: chatModel.modelId,
   });
 
   return turn;

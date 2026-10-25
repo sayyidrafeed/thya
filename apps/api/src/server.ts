@@ -3,11 +3,13 @@ import { Elysia } from "elysia";
 import { z } from "zod";
 import { createDb } from "./db/client";
 import { runMigrations } from "./db/migrate";
-import { env } from "./env";
+import { env, whatsapp } from "./env";
 import { demoChatStream } from "./http/demo";
+import { whatsappWebhook } from "./http/whatsapp";
 import { ensureDemoBusiness } from "./modules/business";
 import { hasSales, seedDemoSales } from "./sales/repository";
 import { newTraceId } from "./trace";
+import { startWorkers } from "./wiring";
 
 const allowedOrigins = new Set(env.WEB_ORIGINS);
 const db = createDb(env.DATABASE_URL);
@@ -20,6 +22,14 @@ const demo = await ensureDemoBusiness(db);
 const firstBoot = !(await hasSales(db, demo.id));
 
 if (firstBoot) await seedDemoSales(db, demo.id, new Date());
+
+// Jobs run in this process (one container on the VPS). A queue that cannot start must not take the
+// web demo down with it, so the failure is logged and the WhatsApp webhook stays off.
+const boss = await startWorkers(db, env.DATABASE_URL).catch((error) => {
+  console.error("jobs failed to start:", error instanceof Error ? error.message : error);
+
+  return null;
+});
 
 const demoChatBody = z.object({
   messages: z.array(z.unknown()).min(1).max(100),
@@ -45,6 +55,7 @@ export const app = new Elysia({ serve: { maxRequestBodySize: 256 * 1024 } })
     }
   })
   .get("/health", () => ({ ok: true }))
+  .use(whatsapp && boss ? whatsappWebhook(db, boss, whatsapp) : new Elysia())
   .post(
     "/demo/chat",
     async ({ body, request, status }) => {
@@ -67,7 +78,9 @@ export const app = new Elysia({ serve: { maxRequestBodySize: 256 * 1024 } })
   )
   .listen(env.PORT);
 
-console.log(`Thya API jalan di http://localhost:${app.server?.port}`);
+console.log(
+  `Thya API jalan di http://localhost:${app.server?.port} (WhatsApp ${whatsapp && boss ? "aktif" : "nonaktif"}).`,
+);
 
 // After listen, so the health check passes while it runs. The demo's rows reach 30 days past each
 // deploy, which keeps "today" moving without a cron; the insert is idempotent.

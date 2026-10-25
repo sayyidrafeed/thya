@@ -18,6 +18,15 @@ const envSchema = z.object({
         .map((origin) => origin.trim())
         .filter(Boolean),
     ),
+  // WhatsApp Cloud API. The channel turns on only when all four are set (morning-handoff.md).
+  WHATSAPP_ACCESS_TOKEN: z.string().min(1).optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
+  WHATSAPP_APP_SECRET: z.string().min(1).optional(),
+  WHATSAPP_VERIFY_TOKEN: z.string().min(1).optional(),
+  WHATSAPP_GRAPH_VERSION: z
+    .string()
+    .regex(/^v\d+\.\d+$/)
+    .default("v23.0"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -28,3 +37,30 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+function whatsappConfig() {
+  const {
+    WHATSAPP_ACCESS_TOKEN,
+    WHATSAPP_PHONE_NUMBER_ID,
+    WHATSAPP_APP_SECRET,
+    WHATSAPP_VERIFY_TOKEN,
+  } = env;
+
+  if (
+    !WHATSAPP_ACCESS_TOKEN ||
+    !WHATSAPP_PHONE_NUMBER_ID ||
+    !WHATSAPP_APP_SECRET ||
+    !WHATSAPP_VERIFY_TOKEN
+  )
+    return null;
+
+  return {
+    accessToken: WHATSAPP_ACCESS_TOKEN,
+    phoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
+    appSecret: WHATSAPP_APP_SECRET,
+    verifyToken: WHATSAPP_VERIFY_TOKEN,
+    graphVersion: env.WHATSAPP_GRAPH_VERSION,
+  };
+}
+
+export const whatsapp = whatsappConfig();

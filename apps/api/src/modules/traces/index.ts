@@ -9,6 +9,7 @@ export type TurnRecord = {
   turn: TurnResult;
   durationMs: number;
   outboundMessages: number;
+  model: string;
 };
 
 export async function recordFailedTurn(
@@ -19,7 +20,7 @@ export async function recordFailedTurn(
     channel,
     durationMs,
     error,
-  }: Omit<TurnRecord, "turn" | "outboundMessages"> & { error: string },
+  }: Omit<TurnRecord, "turn" | "outboundMessages" | "model"> & { error: string },
 ) {
   await db.insert(agentTurns).values({
     traceId,
@@ -38,7 +39,7 @@ export async function recordFailedTurn(
 
 // One write per turn (engine-plan B6), after the reply is decided.
 export async function recordTurn(db: Db, record: TurnRecord) {
-  const { traceId, businessId, channel, turn, durationMs, outboundMessages } = record;
+  const { traceId, businessId, channel, turn, durationMs, outboundMessages, model } = record;
 
   await db.transaction(async (tx) => {
     await tx.insert(agentTurns).values({
@@ -53,6 +54,8 @@ export async function recordTurn(db: Db, record: TurnRecord) {
       outputTokens: turn.usage.outputTokens,
       durationMs,
       outboundMessages,
+      model,
+      promptHash: turn.promptHash,
     });
 
     if (turn.toolCalls.length > 0)

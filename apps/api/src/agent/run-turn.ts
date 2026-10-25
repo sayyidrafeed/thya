@@ -41,6 +41,8 @@ export type TurnInput = {
   conceptEvents: ConceptEvent[];
   now: Date;
   abortSignal?: AbortSignal;
+  // Channel formatting applied to the final reply (WhatsApp markup, decision U4).
+  formatReply?: (reply: string) => string;
 };
 
 export type TurnResult = {
@@ -51,6 +53,8 @@ export type TurnResult = {
   attachments: Attachment[];
   conceptEvents: ConceptEvent[];
   check: { action: TurnAction; ungrounded: UngroundedNumber[]; attempts: number };
+  // Decision U1: SHA-256 of the system prompt plus every tool's name, description and input schema.
+  promptHash: string;
   usage: { inputTokens: number; cachedInputTokens: number; outputTokens: number };
 };
 
@@ -186,6 +190,21 @@ function grounded(input: TurnInput, chosen: Attempt) {
   return { reply: dropped, ungrounded };
 }
 
+function promptHash(input: TurnInput): string {
+  const tools = createSalesTools(input.dataset, []);
+
+  const definitions = Object.entries(tools).map(([name, definition]) => [
+    name,
+    definition.description,
+    definition.inputSchema,
+  ]);
+
+  return new Bun.CryptoHasher("sha256")
+    .update(buildInstructions(input.business))
+    .update(JSON.stringify(definitions))
+    .digest("hex");
+}
+
 export async function runTurn(input: TurnInput): Promise<TurnResult> {
   const abortSignal = AbortSignal.any([
     AbortSignal.timeout(TURN_TIMEOUT_MS),
@@ -196,10 +215,12 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
 
   function finish(
     chosen: Attempt,
-    reply: string,
+    checked: string,
     action: TurnAction,
     ungrounded: UngroundedNumber[],
   ) {
+    const reply = input.formatReply ? input.formatReply(checked) : checked;
+
     return {
       reply,
       responseMessages: withReply(chosen.responseMessages, reply),
@@ -207,6 +228,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
       attachments: [],
       conceptEvents: chosen.conceptEvents,
       check: { action, ungrounded, attempts: tries },
+      promptHash: promptHash(input),
       usage: sumUsage(attempts),
     };
   }

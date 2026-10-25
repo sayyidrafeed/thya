@@ -247,6 +247,9 @@ export const agentTurns = pgTable(
     outputTokens: integer().notNull(),
     durationMs: integer().notNull(),
     outboundMessages: smallint().notNull().default(0),
+    // Decision U1: which model and which prompt + tool definitions answered, for eval and trials.
+    model: text(),
+    promptHash: text(),
     // Set when the turn failed before a reply was decided; the trace id the client got still resolves.
     error: text(),
     createdAt: createdAt(),
@@ -269,7 +272,8 @@ export const agentSteps = pgTable(
   (table) => [index().on(table.traceId)],
 );
 
-// channels/whatsapp: one row per send, keyed so a retried job never sends twice (engine-plan A13).
+// modules/conversation (sent by channels/whatsapp): one row per send, keyed so a retried job never
+// sends twice (engine-plan A13).
 export const outboundStatus = pgEnum("outbound_status", ["pending", "sent", "failed"]);
 
 export const outboundMessages = pgTable("outbound_messages", {
