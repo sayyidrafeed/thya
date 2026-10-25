@@ -3,7 +3,7 @@
 import { m } from "motion/react";
 import { Fragment } from "react";
 
-import { mockupConversations } from "@/lib/landing/mockup-conversations";
+import { firstUserLine, showcaseScenes } from "@/lib/landing/showcase-scenes";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 const leadWords = ["Ask", "how", "your", "shop", "did", "today."];
@@ -11,7 +11,7 @@ const leadWords = ["Ask", "how", "your", "shop", "did", "today."];
 function questionOffset(index: number, activeIndex: number) {
   if (index === activeIndex) return "0%";
 
-  const previous = (activeIndex - 1 + mockupConversations.length) % mockupConversations.length;
+  const previous = (activeIndex - 1 + showcaseScenes.length) % showcaseScenes.length;
 
   return index === previous ? "-100%" : "100%";
 }
@@ -50,9 +50,9 @@ export function HeroHeading({ activeIndex }: { activeIndex: number }) {
         transition={{ delay: 0.6, duration: 0.6 }}
         className="grid max-w-prose overflow-hidden text-title font-medium text-brand md:text-display"
       >
-        {mockupConversations.map((conversation, index) => (
+        {showcaseScenes.map((scene, index) => (
           <m.span
-            key={conversation.id}
+            key={scene.id}
             aria-hidden={index !== activeIndex}
             initial={false}
             animate={{
@@ -62,7 +62,7 @@ export function HeroHeading({ activeIndex }: { activeIndex: number }) {
             transition={{ duration: 0.55, ease }}
             className="col-start-1 row-start-1 text-balance"
           >
-            “{conversation.question}”
+            “{firstUserLine(scene)}”
           </m.span>
         ))}
       </m.p>

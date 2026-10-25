@@ -2,44 +2,54 @@
 
 import { m } from "motion/react";
 
-import { ThyaBubble, TypingBubble, UserBubble } from "@/components/chat/bubbles";
+import { TypingBubble } from "@/components/chat/bubbles";
+import { StepBubble } from "@/components/chat/step-bubble";
+import { DeviceFrame } from "@/components/landing/device-frame";
 import { ThyaMark } from "@/components/ui/thya-mark";
-import type { ThreadEntry } from "@/hooks/use-chat-thread";
-import { mockupConversations } from "@/lib/landing/mockup-conversations";
+import type { ThreadEntry } from "@/hooks/use-showcase";
+import { showcaseScenes } from "@/lib/landing/showcase-scenes";
 
-// A running thread: each entry is one question and Thya's reply; older ones scroll out the top.
-export function PhoneMockup({ entries }: { entries: ThreadEntry[] }) {
+// A running thread inside the phone; older scenes scroll out the top. Preview scenes are labelled.
+export function PhoneMockup({ entries, preview }: { entries: ThreadEntry[]; preview: boolean }) {
   return (
-    <div className="w-full max-w-phone rounded-phone bg-ink p-2 shadow-phone">
-      <div className="overflow-hidden rounded-screen bg-chat">
-        <div className="flex items-center gap-3 bg-chat-bar px-4 pt-7 pb-3">
-          <span className="grid size-9 place-items-center rounded-full bg-surface-raised shadow-card">
-            <ThyaMark />
-          </span>
-          <div className="leading-tight">
-            <p className="text-caption font-semibold">Thya</p>
-            <p className="text-label text-ink-muted">Your agent</p>
-          </div>
+    <DeviceFrame>
+      <div className="flex items-center gap-3 border-b border-line bg-chat-bar px-4 pb-3">
+        <span className="grid size-9 place-items-center rounded-full bg-surface-raised shadow-card">
+          <ThyaMark />
+        </span>
+        <div className="flex-1 leading-tight">
+          <p className="text-caption font-semibold">Thya</p>
+          <p className="text-label text-ink-muted">Your agent</p>
         </div>
-        <div className="relative flex h-chat flex-col justify-end gap-2 overflow-hidden px-3 py-4 text-bubble">
-          {entries.map((entry) => {
-            const conversation = mockupConversations[entry.index] ?? mockupConversations[0];
-
-            return (
-              <m.div
-                key={entry.key}
-                layout="position"
-                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                className="flex shrink-0 flex-col gap-2"
-              >
-                <UserBubble text={conversation.question} />
-                {entry.stage === "typing" ? <TypingBubble /> : null}
-                {entry.stage === "answered" ? <ThyaBubble text={conversation.answer} /> : null}
-              </m.div>
-            );
-          })}
-        </div>
+        <span
+          data-show={preview}
+          className="rounded-control border border-dashed border-line-strong px-2 py-0.5 font-mono text-label text-ink-muted uppercase opacity-0 transition-opacity duration-300 data-[show=true]:opacity-100"
+        >
+          Preview
+        </span>
       </div>
-    </div>
+      <div className="relative flex h-chat flex-col justify-end gap-2 overflow-hidden px-3 py-3 text-bubble">
+        {entries.map((entry) => {
+          const scene = showcaseScenes[entry.scene];
+
+          if (!scene) return null;
+
+          return (
+            <m.div
+              key={entry.key}
+              layout="position"
+              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+              className="flex shrink-0 flex-col gap-2"
+            >
+              {scene.steps.slice(0, entry.shown).map((step, index) => (
+                // oxlint-disable-next-line react/no-array-index-key -- steps are a fixed script; position is identity
+                <StepBubble key={index} step={step} />
+              ))}
+              {entry.typing ? <TypingBubble /> : null}
+            </m.div>
+          );
+        })}
+      </div>
+    </DeviceFrame>
   );
 }

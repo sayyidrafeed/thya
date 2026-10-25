@@ -3,7 +3,7 @@
 import { useInView, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
-import type { ThreadStage } from "@/hooks/use-chat-thread";
+type ThreadStage = "asked" | "typing" | "answered";
 
 const beats: [ThreadStage, number][] = [
   ["asked", 0],

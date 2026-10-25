@@ -32,6 +32,10 @@
   --color-bubble-in: #ffffff;
   --color-bubble-out: #d9fdd3;
 
+  /* Phone hardware: natural titanium rim and its darker button edge. Decorative only. */
+  --color-titanium: #d6d2ca;
+  --color-titanium-edge: #a8a399;
+
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
@@ -83,9 +87,10 @@
   --radius-card: 1.25rem;
   --radius-panel: 1.75rem;
   --radius-bubble: 0.75rem;
-  --radius-phone: 2.75rem;
-  /* Screen inside the phone bezel: phone radius minus the 0.5rem bezel. */
-  --radius-screen: 2.25rem;
+  /* Phone: titanium rim, black bezel, then the screen, each inset so the corners stay concentric. */
+  --radius-device: 3.6rem;
+  --radius-bezel: 3.4rem;
+  --radius-screen: 2.75rem;
 
   /* Depth */
   --shadow-card: 0 1px 2px rgb(23 21 15 / 0.06);

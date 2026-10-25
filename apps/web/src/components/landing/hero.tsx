@@ -4,15 +4,13 @@ import { m } from "motion/react";
 
 import { HeroHeading } from "@/components/landing/hero-heading";
 import { UseCaseShowcase } from "@/components/landing/use-case-showcase";
-import { useChatThread } from "@/hooks/use-chat-thread";
-import { useUseCaseCycle } from "@/hooks/use-use-case-cycle";
-import { mockupConversations } from "@/lib/landing/mockup-conversations";
+import { useShowcase } from "@/hooks/use-showcase";
+import { showcaseScenes } from "@/lib/landing/showcase-scenes";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
 export function Hero() {
-  const { activeIndex, select } = useUseCaseCycle(mockupConversations.length);
-  const entries = useChatThread(activeIndex);
+  const { activeIndex, entries, select } = useShowcase(showcaseScenes);
 
   return (
     <section className="mx-auto flex w-full max-w-page flex-col items-center gap-8 px-4 pt-14 pb-section sm:px-6 md:pt-20">
