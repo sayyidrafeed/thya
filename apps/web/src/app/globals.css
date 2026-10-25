@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* PLACEHOLDER tokens until the visual references arrive; keep the role names (docs/landing-styling.md). */
+@theme {
+  /* Reset Tailwind's palette so only Thya tokens exist. */
+  --color-*: initial;
+
+  /* Surfaces */
+  --color-surface: #ffffff;
+  /* Section bands and quiet fills. */
+  --color-surface-muted: #f0f2f5;
+
+  /* Text. ink 17.5:1 and ink-muted 6.1:1 on surface; ink-muted 5.4:1 on surface-muted. */
+  --color-ink: #111b21;
+  --color-ink-muted: #54656f;
+
+  /* Hairlines and dividers. Decorative only, never the sole cue. */
+  --color-line: #d1d7db;
+
+  /* Brand: the main action, links, the selected tab. on-brand 5.2:1 on brand. */
+  --color-brand: #0b7a6c;
+  --color-on-brand: #ffffff;
+  /* Focus ring, 5.2:1 on surface. */
+  --color-ring: #0b7a6c;
+
+  /* WhatsApp chat mockup. ink 14.6:1 on chat, 15.8:1 on bubble-out; ink-muted 5.1:1 on chat. */
+  --color-chat: #efeae2;
+  --color-bubble-in: #ffffff;
+  --color-bubble-out: #d9fdd3;
+
+  /* Text styles: each carries its own line height and tracking. */
+  --text-display: 2.5rem;
+  --text-display--line-height: 1.1;
+  --text-display--letter-spacing: -0.02em;
+  --text-title: 1.5rem;
+  --text-title--line-height: 1.25;
+  --text-title--letter-spacing: -0.01em;
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.4;
+  /* Chat bubbles; 16px so the /demo input never triggers iOS zoom. */
+  --text-chat: 1rem;
+  --text-chat--line-height: 1.4;
+
+  /* Corner sizes */
+  --radius-control: 0.75rem;
+  --radius-card: 1rem;
+  --radius-bubble: 0.75rem;
+  --radius-phone: 2.5rem;
+
+  /* Depth */
+  --shadow-card: 0 1px 2px rgb(17 27 33 / 0.08);
+  --shadow-phone: 0 24px 48px -16px rgb(17 27 33 / 0.25);
+
+  /* Layout */
+  --container-page: 72rem;
+  --container-phone: 22rem;
+  --container-prose: 40rem;
+  --spacing-section: 6rem;
+  --aspect-phone: 9 / 19;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-surface text-body text-ink antialiased;
+  }
+
+  ::selection {
+    @apply bg-bubble-out text-ink;
+  }
+}
