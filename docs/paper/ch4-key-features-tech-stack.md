@@ -19,7 +19,8 @@ Thya is an AI agent that a business owner talks to in plain Indonesian. The owne
 | Scheduled recap | "Tiap hari buatin rekapan ya" saves a schedule, and a background worker sends the recap every day | Planned before the final |
 | Spreadsheet connection | Read an owner's existing sales spreadsheet instead of retyping it | Planned before the final |
 | Net profit and operating costs | Record rent, wages, and other operating costs so Thya can answer net profit. Today Thya replies that this data is not available yet and gives no number | Roadmap |
-| Record a transaction by chat | "Tadi beli gula 2 kg 36 ribu" saves an expense | Roadmap |
+| Record sales by text message | The owner types "tadi laku 20 kopi susu". Thya drafts the entry and sends a WhatsApp card with Ya / Ubah / Batal buttons. Nothing is saved until the owner taps Ya | Planned for the final, in development |
+| Record by voice note or receipt photo | Speak or photograph instead of typing | Roadmap |
 
 The prototype uses one sample business, Kopi Senja, a coffee shop in Yogyakarta with 11 menu items. Its sales history is generated, not real customer data. We chose food and beverage (F&B) as the first segment because its data has a regular shape: sales per menu item, ingredient cost, and operating expenses.
 
@@ -32,10 +33,10 @@ Boxes with a dashed border are not built yet. Arrows show the request path.
 1. **Channels.** The owner chats on WhatsApp. Meta's WhatsApp Cloud API forwards each message to our webhook over HTTPS and delivers our reply. For judges and visitors, the web demo sends the same kind of chat request to the API.
 2. **Thya API.** One Elysia server running on Bun receives webhooks and demo requests. It validates every request body with Zod before the agent sees it, and it rejects client-supplied system prompts.
 3. **AI agent.** The agent is a loop of LLM calls and tool calls, built with the Vercel AI SDK. The model picks a tool, the SDK runs it, and the result goes back to the model. The loop stops after at most 5 steps. Tool inputs have Zod schemas, so a malformed call from the model fails validation instead of running.
-4. **Tools.** Each tool is a plain TypeScript function with a typed input. The prototype has four: `queryMetric` (one defined metric per call, with its comparison and plain-language explanation), `explainConcept` (what a term such as HPP or gross margin means, shown with the owner's numbers), `getTopMenuItems`, and `getDailySales`. Metric definitions live in one module, so the same word always maps to the same calculation. Planned tools include `addTransaction`, `readSpreadsheet`, and `createSchedule`.
+4. **Tools.** Each tool is a plain TypeScript function with a typed input. The prototype has four: `queryMetric` (one defined metric per call, with its comparison and plain-language explanation), `explainConcept` (what a term such as HPP or gross margin means, shown with the owner's numbers), `getTopMenuItems`, and `getDailySales`. Metric definitions live in one module, so the same word always maps to the same calculation. Planned tools include a draft-and-confirm tool for recording transactions, `readSpreadsheet`, and `createSchedule`. A write tool only creates a draft; code, not the model, saves it after the owner taps Ya.
 5. **LLM.** DeepSeek V4.1 Flash, served by NetraRuntime through an OpenAI-compatible endpoint. NetraRuntime has zero data retention by default and runs its primary GPU infrastructure in Indonesia. One module (`llm.ts`) is the only code that knows the provider, so we can switch models without touching the agent.
 6. **Data.** One PostgreSQL database with the pgvector extension, accessed through Drizzle ORM. It will hold businesses, users (WhatsApp numbers), message history, transactions, and schedules. pgvector covers document search, so we do not run a separate vector database. In the prototype the agent reads generated sample data in memory instead.
-7. **Worker.** A second entrypoint from the same codebase checks due schedules and runs the agent to write each recap. pg-boss provides the job queue and cron on top of the same Postgres, so no Redis is needed.
+7. **Worker (planned).** A second entrypoint from the same codebase will check due schedules and run the agent to write each recap. pg-boss will provide the job queue and cron on top of the same Postgres, so no Redis is needed. The worker is not built or deployed yet.
 
 ## Tech stack
 
@@ -49,7 +50,7 @@ Boxes with a dashed border are not built yet. Arrows show the request path.
 | LLM | DeepSeek V4.1 Flash via NetraRuntime | Zero data retention by default and primary GPU infrastructure in Indonesia, which matters for business financial data under Law No. 27/2022 on Personal Data Protection (UU PDP) |
 | Database | PostgreSQL + pgvector, Drizzle ORM | Relational data and embeddings in one database |
 | Scheduling | pg-boss | Cron and retries backed by the existing Postgres |
-| Hosting | API, worker, and database on a VPS with Docker Compose and Caddy (automatic HTTPS); landing page on static hosting | WhatsApp webhooks require a valid HTTPS endpoint |
+| Hosting | One VPS in Jakarta managed by Dokploy (Traefik, automatic HTTPS) runs the API and the static landing page; the worker for scheduled recaps and the database will run there too. GitHub Actions builds the images and publishes them to GitHub Container Registry (GHCR) | WhatsApp webhooks require a valid HTTPS endpoint, and one dashboard handles deploys, domains, and certificates |
 | Monorepo and quality | Bun workspaces, Turborepo, `bun test`, Oxlint | Unit tests cover the sales calculations, metric definitions, and tool logic |
 
 ## Data protection
@@ -62,7 +63,7 @@ Boxes with a dashed border are not built yet. Arrows show the request path.
 Open items before export (remove this comment from the paper):
 - Do not claim that data stays in Indonesia. NetraRuntime's data-handling policy (https://netraruntime.com/policies/data-handling) says ZDR does not guarantee processing stays in Indonesia and mentions external inference routes and fallback processing.
 - Netra's cache is shared across customers, with a per-workspace opt-out. Opt the Thya workspace out before claiming anything about caching.
-- Confirm VPS region (Jakarta or Singapore) before writing where the database runs.
+- The VPS is in Jakarta (Sumopod, Tencent). Postgres is not created yet, so do not claim the database or its backups are running.
 - Confirm the "Status" column against the deployed demo on the day of export.
 - NetraRuntime zero-retention claim: cite https://netraruntime.com/policies/data-handling in the Reference chapter.
 -->

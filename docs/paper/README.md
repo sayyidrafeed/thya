@@ -31,10 +31,11 @@ Diambil dari `docs/product-context.md`. Agent tidak mengubah klaim bisnis atau a
 
 ## Yang harus Rafee cek sebelum export PDF
 
-- Kolom Status di Bab 4 dan daftar "What runs today" di Bab 7 cocok dengan yang benar-benar tayang. Saat draft ditulis, `apps/web` belum ada di repo; demo web dan URL `thya.veterantech.id` harus sudah live sebelum diklaim "working".
+- Kolom Status di Bab 4 dan daftar "What runs today" di Bab 7 cocok dengan yang benar-benar tayang. Per 25 Okt, `https://thya.veterantech.id` (200) dan `https://thya-api.sayyidrafee.com/health` sudah live; cek ulang di hari export.
 - Jangan klaim data dijamin tetap di Indonesia. Kebijakan data-handling NetraRuntime (https://netraruntime.com/policies/data-handling) menyebut ZDR tidak menjamin pemrosesan tetap di Indonesia, ada external inference route, dan ada fallback processing. Teks sekarang hanya menulis "zero data retention by default, primary GPU infrastructure in Indonesia".
 - Cache Netra dibagi antar-customer, dengan opsi opt-out per workspace. Keputusan Rafee (`docs/decisions.md`): tidak opt-out selama hackathon. Jadi paper tidak boleh mengklaim apa pun soal cache.
-- Region VPS (Jakarta atau Singapura). Teks Bab 4 sengaja tidak menyebut lokasi database.
+- VPS ada di Jakarta (Sumopod/Tencent, Dokploy). Postgres belum dibuat, jadi paper tidak boleh mengklaim database atau backup sudah jalan.
 - Hasil `verify:netra` (tool calling di NetraRuntime) sudah lulus.
 - Harga template message WhatsApp hanya dikutip dari halaman resmi Meta.
+- Pencatatan transaksi lewat teks (Ya / Ubah / Batal) sekarang ditulis "planned for the final" di Bab 4, 7, dan 10. Sumbernya keputusan Rafee yang diteruskan session engine. Per 25 Okt, `docs/engine-plan.md` masih mencatat Q3 sebagai OPEN dan `docs/decisions.md` belum punya entrinya. Jangan ubah jadi "working" sebelum fiturnya jalan.
 - Hapus blok komentar `<!-- Open items -->` di tiap file sebelum teks masuk paper.

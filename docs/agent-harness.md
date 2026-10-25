@@ -24,6 +24,13 @@ Harness adalah semua hal di sekitar loop agent (`generateText` + tools) yang mem
 | POS (majoo, GoBiz, Moka, Qasir, Pawoon) | Tidak | majoo Open API butuh Prime + Rp25 juta tahun pertama. GoBiz butuh verifikasi partner. Sisanya tidak punya jalur publik yang terkonfirmasi |
 | Platform connector (Composio, Nango, Pipedream, Arcade) | Tidak | Tidak ada konektor POS Indonesia yang ditemukan, lokasi data tidak dijamin, dan kebutuhan Thya hanya satu (Sheets). Evaluasi ulang kalau user meminta lebih dari ~3 SaaS global |
 
+**GoPay Merchant / QRIS (riset 2026-10-25):**
+- Tidak ditemukan API resmi untuk menarik transaksi atau settlement GoBiz. Portal developer hanya mendokumentasikan Food dan Payment (buat QRIS, status per order). SDK komunitas yang menarik mutasi lewat login portal diperingatkan penulisnya sendiri berisiko melanggar ToS. Sumber: https://developer.gobiz.com, https://jsr.io/@xirf/gobiz-merchant-sdk
+- SNAP BI (Transaction History, Bank Statement) butuh sertifikasi dan kemitraan bank. Tidak realistis untuk tim kecil. Sumber: https://apidevportal.aspi-indonesia.or.id/api-services/riwayat-transaksi
+- Jalur yang feasible untuk final: pemilik meneruskan screenshot riwayat/settlement ke WhatsApp (dibaca vision), atau ekspor/email laporan (GoPay: menu Keuangan → Download, hanya QRIS; Livin' Merchant: .xls). Butuh 2–3 sampel asli dari warung untuk menguji akurasi ekstraksi.
+- Roadmap: QRIS dinamis Thya lewat gateway (Midtrans/Xendit, webhook langsung, tapi Thya jadi jalur pembayaran dan butuh KYC), GoBiz Partner API (konfirmasi cakupan laporan ke GoBiz dulu), OCR e-statement agregator (Brick).
+- Tidak dianjurkan: scraping portal GoBiz atau menyimpan kredensial bank pemilik.
+
 Risiko yang lebih besar dari pilihan alat: **warung kecil mungkin tidak punya POS, dan data HPP (biaya bahan per porsi) sering tidak ada.** Onboarding harus mengumpulkan HPP menu utama lewat chat.
 
 ## 3. Semantic layer: registry metrik di TypeScript

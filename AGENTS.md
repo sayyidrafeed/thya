@@ -13,6 +13,10 @@ Project ini dibuat untuk lomba .id DeveloperDay 2026 (PANDI, Road to APICTA). Ko
 | [docs/architecture.md](docs/architecture.md) | Struktur repo, alur agent, rekap terjadwal, WhatsApp, hosting |
 | [docs/agent-harness.md](docs/agent-harness.md) | Desain harness agent: data masuk, registry metrik, webhook + queue, memory, guardrail, eval, STT |
 | [docs/semantic-education.md](docs/semantic-education.md) | Registry metrik + edukasi istilah bisnis untuk pemilik warung, onboarding HPP (D1–D9 diterima 2026-10-25) |
+| [docs/engine-plan.md](docs/engine-plan.md) | Tech plan engine (harness + eval suite) dari perbandingan SuperNalar, NalarX, dan praktik luar. Q1–Q10 diputuskan 2026-10-25 |
+| [docs/feature-catalog.md](docs/feature-catalog.md) | Riset katalog fitur: grafik tanpa Python, rekap/pengingat, dokumen, aksi Google |
+| [docs/business-features-plan.md](docs/business-features-plan.md) | Tech plan fitur bisnis (visual, jadwal, Sheets, email), disetujui 2026-10-25. Dikerjakan session fitur; kontrak dengan engine ada di engine-plan §5.1 dan §6 |
+| [docs/ops/vps-runbook.md](docs/ops/vps-runbook.md) | VPS + Dokploy: akses (ssh thya / thya-ops), hardening, DNS, CI/CD GHCR, restore, batasan untuk agent |
 | [docs/decisions.md](docs/decisions.md) | Log keputusan beserta tanggal dan alasannya |
 | [docs/landing-styling.md](docs/landing-styling.md) | Aturan styling `apps/web`: token, Tailwind, larangan inline style, lint yang menegakkannya |
 | [docs/landing-patterns.md](docs/landing-patterns.md) | Pola kode `apps/web` dari Siera/FIKES/nalarx-docs: lapisan, static export, deploy nginx, file contoh |
@@ -43,7 +47,7 @@ Agent bekerja untuk Rafee. Isi paper dan Slides milik Indy dan Nawra: agent bole
 
 ## Stack (lihat docs/architecture.md)
 
-Bun workspaces + Turborepo. `apps/web` Next.js, `apps/api` Elysia di Bun, Vercel AI SDK untuk agent, Postgres + pgvector dengan Drizzle, WhatsApp Cloud API, LLM DeepSeek V4.1 Flash lewat NetraRuntime. Deploy API + DB ke VPS (Docker Compose + Caddy).
+Bun workspaces + Turborepo. `apps/web` Next.js, `apps/api` Elysia di Bun, Vercel AI SDK untuk agent, Postgres + pgvector dengan Drizzle, WhatsApp Cloud API, LLM DeepSeek V4.1 Flash lewat NetraRuntime. Deploy ke satu VPS Jakarta lewat Dokploy (Traefik + HTTPS); image dibangun GitHub Actions ke GHCR. Lihat `docs/ops/vps-runbook.md`. Postgres dan backup belum berjalan.
 
 ## Cara kerja
 

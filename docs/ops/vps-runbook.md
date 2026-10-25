@@ -88,12 +88,27 @@ Semua record **DNS only** (awan abu-abu di Cloudflare). Traefik mengambil sertif
 
 ## Postgres
 
-- Service Dokploy `thya-db` di project `thya`, image `pgvector/pgvector:0.8.7-pg17`. Versi di-pin; pg18 tidak dipakai karena image pg18 memindahkan direktori data dan berbenturan dengan mount `/var/lib/postgresql/data` bawaan Dokploy.
-- Database `thya`, user `thya`. Password di-generate Dokploy dan hanya terlihat di tab database itu.
-- **Tidak ada External Port.** Aplikasi memakai *Internal Connection URL* dari tab database (`postgresql://thya:…@<app-name>:5432/thya`) dan menyimpannya sebagai env `DATABASE_URL` di aplikasi.
-- Extension `vector` dibuat dengan `CREATE EXTENSION IF NOT EXISTS vector;` (nanti lewat migrasi Drizzle).
+- Service Dokploy `thya-db` di project `thya`, nama service Swarm `thya-db-yhfnxu`, image `pgvector/pgvector:0.8.7-pg17` (PostgreSQL 17.11). Versi di-pin; pg18 tidak dipakai karena image pg18 memindahkan direktori data dan berbenturan dengan mount `/var/lib/postgresql/data` bawaan Dokploy. Data di volume `thya-db-yhfnxu-data`.
+- Database `thya`, user `thya` (superuser di container ini). Password di-generate Dokploy dan hanya terlihat di tab database itu.
+- **Tidak ada External Port.** Service hanya terhubung ke `dokploy-network`. Aplikasi `thya-api` memakai *Internal Connection URL* dari tab database (host `thya-db-yhfnxu`, port 5432, database `thya`) sebagai env `DATABASE_URL`.
+- Schema dibuat migrasi Drizzle `apps/api/drizzle/` saat server start (`src/db/migrate.ts`, dengan advisory lock). Migrasi yang sudah tercatat di `drizzle.__drizzle_migrations` tidak dijalankan ulang, jadi perubahan schema berikutnya harus berupa file migrasi baru, bukan edit file lama.
+- Extension `vector` 0.8.7 tersedia. Belum ada migrasi yang membuatnya, karena schema belum memakai kolom vector. Migrasi pertama yang butuh embedding cukup menambahkan `CREATE EXTENSION IF NOT EXISTS vector;`.
+- Cek cepat dari VPS (agent): `ssh thya-ops 'sudo docker exec $(sudo docker ps -q -f name=thya-db) psql -U thya -d thya -c "\dt"'`.
+
+Diverifikasi 2026-10-25 lewat `ssh thya-ops`:
+- `docker service inspect thya-db-yhfnxu`: `Endpoint.Ports` kosong, hanya `dokploy-network`; tidak ada listener 5432 di host (`ss -ltnp`).
+- `psql`: `select version()` → 17.11; `pg_available_extensions` → `vector` 0.8.7; `BEGIN; CREATE EXTENSION vector; ROLLBACK;` berhasil.
+- `thya-api-nc08wz` punya env `DATABASE_URL` (dicek nama variabelnya saja).
+- Migrasi engine di DB kosong: container sekali pakai `oven/bun:1.4.2` di `dokploy-network` dengan `DATABASE_URL` dari spec `thya-api` (tidak dicetak), menjalankan `runMigrations` dari `apps/api/src/db/migrate.ts`. Host `thya-db-yhfnxu` terjangkau. Run pertama sukses (98 ms), run kedua tanpa perubahan. Hasilnya 18 tabel di `public` dan satu baris di `drizzle.__drizzle_migrations` (`0000_init`). Container, file sementara, dan image `oven/bun` sudah dihapus dari VPS.
+- Image `thya-api:main` yang jalan saat itu belum memakai DB. Koneksi dari aplikasi sungguhan baru terbukti setelah kode engine di-deploy.
+
+### Lokal
+
+`scripts/db-local.sh` menjalankan container `thya-postgres` dengan image yang sama, di `127.0.0.1:5452`, volume `thya-pgdata`, plus database `thya_test` untuk tes integrasi. Login `thya/thya` hanya untuk lokal. `DATABASE_URL` dan `TEST_DATABASE_URL` di `.env.example` sudah cocok dengan script ini. Container dibatasi 512 MB dan 1 CPU, tanpa auto-restart, karena MacBook Rafee (M4, 16 GB) dipakai bersama project lain. Matikan dengan `scripts/db-local.sh stop` setelah selesai; datanya tetap ada di volume.
 
 ### Backup
+
+**Belum dipasang.** Rafee menunda backup R2 pada 2026-10-25, setelah `thya-db` dibuat. Sampai backup aktif, isi DB hanya ada di volume `thya-db-yhfnxu-data` di VPS ini. Rencana di bawah ini berlaku begitu backup dipasang, dan wajib aktif sebelum ada data UMKM sungguhan.
 
 - Tujuan: Cloudflare R2, bucket `thya-backups`. Token R2 hanya berhak Object Read & Write di bucket itu, dan dimasukkan Rafee langsung ke Dokploy (Settings → S3 Destinations).
 - Jadwal: `0 19 * * *`. Container Dokploy berjalan dalam UTC, jadi ini = **02.00 WIB** setiap hari. Prefix `postgres`, simpan 14 terakhir.
@@ -209,8 +224,8 @@ Per 2026-10-25:
 
 - [x] Hardening, firewall, fail2ban, update keamanan otomatis
 - [x] Dokploy + dashboard HTTPS, port 3000 ditutup
-- [ ] Postgres `thya-db` (ditunda oleh Rafee, 2026-10-25; `apps/api` belum memakai DB)
-- [ ] Destination R2 + jadwal backup (ditunda oleh Rafee untuk menghemat egress, 2026-10-25). Wajib aktif sebelum ada data UMKM sungguhan di DB
+- [x] Postgres `thya-db` (pgvector pg17, tanpa port publik), `DATABASE_URL` terpasang di `thya-api`, migrasi engine teruji dari jaringan internal (2026-10-25, lihat [Postgres](#postgres))
+- [ ] Destination R2 + jadwal backup (ditunda lagi oleh Rafee setelah DB dibuat, 2026-10-25). Wajib aktif sebelum ada data UMKM sungguhan di DB
 - [ ] Uji backup manual dan uji restore
 - [x] Repo `sayyidrafeed/thya` (public) di GitHub
 - [x] CI/CD GitHub Actions → GHCR → webhook Dokploy, diuji ujung ke ujung; `https://thya-api.sayyidrafee.com/health` → `{"ok":true}`

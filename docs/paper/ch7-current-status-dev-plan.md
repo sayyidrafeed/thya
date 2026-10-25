@@ -8,7 +8,7 @@ Thya is at the **Prototype** stage. The core loop works end to end on sample dat
 
 What runs today:
 
-- **Web demo at thya.veterantech.id.** A WhatsApp-style chat page on our .id domain. It calls the real agent, not scripted replies. *(Confirm the URL is live before export.)*
+- **Web demo at thya.veterantech.id.** A WhatsApp-style chat section on the landing page, on our .id domain. It calls the real agent, not scripted replies. The landing page and the API run on our VPS in Jakarta, managed by Dokploy. *(Live on 25 October 2026; recheck before export.)*
 - **AI agent with four tools.** `queryMetric` (one metric per call: revenue, cost of goods sold, gross profit, gross margin, or items sold, with the change against the previous period and a plain-language explanation that uses the owner's own numbers), `explainConcept` (explains terms such as HPP or gross margin with the owner's numbers), `getTopMenuItems` (best and worst sellers by revenue, quantity, or profit), and `getDailySales` (daily trend up to 31 days). The agent runs on DeepSeek V4.1 Flash through NetraRuntime, which has zero data retention by default and primary GPU infrastructure in Indonesia.
 - **Sample business.** Kopi Senja, a coffee shop in Yogyakarta with 11 menu items and generated sales history. No real customer data is used.
 - **Automated tests.** Unit tests cover the sales calculations and the tool logic (31 tests passing on 25 October 2026).
@@ -17,7 +17,7 @@ What does not run yet:
 
 - WhatsApp channel. The demo uses the web page instead.
 - Database. Sample data lives in memory; nothing the owner says is stored.
-- Scheduled recaps, spreadsheet import, and recording transactions by chat.
+- Scheduled recaps, spreadsheet import, and recording transactions by typed message. All three are planned for the final.
 - Net profit. Operating costs are not recorded, so Thya says net profit is not available yet instead of giving a number.
 - Setting up cost per menu item (HPP) through chat. The sample data already includes it.
 - Storing which concepts an owner has already seen. The web demo rebuilds this from the chat history on each request.
@@ -25,12 +25,13 @@ What does not run yet:
 
 ## Development plan to the final (10 November 2026)
 
-The goal for the final is a live demo on a real WhatsApp chat: the owner asks about sales, gets an answer, and receives an automatic daily recap.
+The goal for the final is a live demo on a real WhatsApp chat: the owner asks about sales, records a sale by typing it, and receives an automatic daily recap.
 
 | Dates | Work | Done when |
 |---|---|---|
-| 26 Oct – 1 Nov | Store data in PostgreSQL (Drizzle ORM): businesses, users, message history, transactions. Move the sample data into the database. Deploy API and database to the VPS with HTTPS. | The demo answers from the database and keeps conversation history between sessions |
+| 26 Oct – 1 Nov | Store data in PostgreSQL (Drizzle ORM): businesses, users, message history, transactions. Move the sample data into the database. Create the database on the same VPS through Dokploy, with daily backups. | The demo answers from the database and keeps conversation history between sessions |
 | 26 Oct – 1 Nov | Connect a WhatsApp Cloud API test number: receive messages by webhook, reply through the send API. | A message sent from a registered phone gets an answer from the agent |
+| 1 – 3 Nov | Record transactions by text: the owner types "tadi laku 20 kopi susu", Thya saves a draft and sends a WhatsApp card with Ya / Ubah / Batal buttons, and the entry is saved once after Ya. | A typed sale is saved exactly once after Ya, and nothing is saved after Batal or without an answer |
 | 2 – 6 Nov | Scheduled recaps: `createSchedule` tool, worker with pg-boss, daily recap text. Submit a utility template message to Meta for recaps sent outside the 24-hour window. | "Tiap hari buatin rekapan ya" produces a recap at the requested time |
 | 2 – 6 Nov | Spreadsheet import: read an owner's sales sheet into the transactions table. | A sample sheet loads and the agent answers questions about it |
 | 7 – 9 Nov | Trial with F&B owners, fix issues found, prepare the demo script and backup recording. | *(Needs input from Nawra and Indy: number of owners and how they are recruited)* |
@@ -39,7 +40,7 @@ The goal for the final is a live demo on a real WhatsApp chat: the owner asks ab
 Limits we accept for the final:
 
 - A WhatsApp test number can message at most 5 registered phone numbers. This is enough for the live demo and trial users. A production number needs Meta business verification and is part of the Roadmap.
-- Recording transactions by chat, voice notes, and receipt photos stay on the Roadmap.
+- Voice notes and receipt photos stay on the Roadmap. Only typed text messages are recorded for the final.
 
 <!--
 Open items before export (remove this comment from the paper):

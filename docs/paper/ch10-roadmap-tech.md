@@ -8,7 +8,7 @@ Each step below removes one thing that stops an owner from using Thya every day.
 
 - **Production WhatsApp number.** Complete Meta business verification so Thya can message any owner, not only the 5 numbers a test number allows. This is the step from demo to real users.
 - **Approved recap templates.** WhatsApp only allows free-form messages within 24 hours of the owner's last message. Daily and weekly recaps sent outside that window must use templates approved by Meta in the utility category, which Meta charges per message. We will register templates for daily recap, weekly recap, and reminders, and budget their cost per active owner.
-- **Recording by chat.** Let owners log sales and expenses by typing them ("tadi beli gula 2 kg 36 ribu"). The agent parses the message, asks to confirm, then saves it.
+- **Expenses and operating costs.** Recording sales by typed message is planned for the final (Chapter 7). After the final, the same draft-and-confirm flow extends to purchases and operating costs ("tadi beli gula 2 kg 36 ribu", rent, wages), so Thya can answer net profit.
 - **Two-way spreadsheet sync.** Keep an owner's existing sheet as the source they already know, with Thya reading and writing it.
 
 ## Phase 2: less typing (2027)

@@ -7,10 +7,10 @@ Status: usulan 2026-10-25, boleh diubah Rafee. Fondasi `apps/api` sudah ada; lih
 ```
 thya/
   apps/
-    web/            Next.js: landing page + /demo (chat bergaya WhatsApp)
+    web/            Next.js: landing satu halaman, chat demo sebagai section
     api/            Bun + Elysia, satu codebase dengan dua entrypoint
       src/
-        server.ts   HTTP: endpoint chat untuk /demo (webhook WhatsApp menyusul)
+        server.ts   HTTP: endpoint chat untuk demo di landing (webhook WhatsApp menyusul)
         worker.ts   stub; nanti scheduler + runner job (rekap harian, reminder)
         agent/      loop agent, tools, system prompt
         sales/      hitung omzet/HPP/margin + data seed demo (nanti diganti DB)
@@ -52,7 +52,7 @@ Diperiksa dengan skill `siera-best-practices` pada 2026-10-25, sebelum ada kode.
 
 | Area | Pilihan | Aturan pakai |
 |---|---|---|
-| Web | `next` dengan `output: "export"` | Landing di-pre-render jadi HTML statis, tanpa server Next. Disajikan nginx dalam image yang dipublikasikan ke GHCR. `/demo` hanya memanggil API lewat HTTP |
+| Web | `next` dengan `output: "export"` | Landing di-pre-render jadi HTML statis, tanpa server Next. Disajikan nginx dalam image yang dipublikasikan ke GHCR. Chat demo hanya memanggil API lewat HTTP |
 | Styling | `tailwindcss` v4 | Token di `@theme`, tanpa `style={{}}` kecuali nilai yang baru ada saat runtime |
 | Animasi | `motion` | Pakai `LazyMotion` + `m` dengan `domAnimation`, bukan `motion.*` penuh. Transisi sederhana cukup dengan CSS |
 | Ikon | `lucide-react` | Import per ikon |
@@ -91,7 +91,7 @@ WhatsApp user ──▶ Meta Cloud API ──webhook──▶ api/server.ts
                                                  │          createSchedule, ...
                                                  ▼
                                             balasan ──▶ WhatsApp send API
-/demo (web) ──HTTP──▶ api/server.ts ──▶ agent.run(...) yang sama
+demo (web)  ──HTTP──▶ api/server.ts ──▶ agent.run(...) yang sama
 ```
 
 Agent = loop LLM + tools. Vercel AI SDK `generateText` dengan `tools` dan `stopWhen` menjalankan tool call multi-langkah. Riwayat percakapan disimpan di tabel `messages` dan dimuat ulang tiap giliran. LangGraph baru dipertimbangkan kalau muncul alur bercabang yang butuh persetujuan user, misalnya "konfirmasi sebelum kirim PO ke supplier".
@@ -154,7 +154,7 @@ VPS: 2 vCPU / 4 GB / 60 GB SSD, Ubuntu 24.04, IP `43.173.20.60`. Dokploy menggan
 
 ## WhatsApp
 
-- Hari ini: belum. `/demo` di web memakai agent yang sama.
+- Hari ini: belum. Chat demo di landing memakai agent yang sama.
 - Sebelum final: nomor test WhatsApp Cloud API. Tidak butuh verifikasi bisnis, tapi hanya bisa mengirim ke maksimal 5 nomor terdaftar. Cukup untuk video dan demo final.
 - Nomor production butuh verifikasi bisnis Meta; ini masuk Roadmap.
 - Biaya: per pesan template, di luar 1.000 service message gratis per nomor per bulan. Sumber: ringkasan respond.io soal perubahan harga Oktober 2026. Cek dokumentasi resmi Meta sebelum mengutip angka di paper.

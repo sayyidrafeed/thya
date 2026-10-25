@@ -83,6 +83,8 @@ Format: tanggal, keputusan, alasan, pemilik. Keputusan yang berubah tidak dihapu
 - **Paparan konsep di `/demo` dihitung ulang dari history yang dikirim client.** History ini tidak tepercaya. Bagian tool yang rusak dilewati, dan bagian palsu hanya bisa membuat Thya menjelaskan lebih banyak atau lebih sedikit, tidak mengubah angka. Tabel Postgres menyusul di tahap 2 bersama WhatsApp.
 - **Belum dikerjakan di tahap 1:** jendela 14 hari untuk naik level, cakupan parsial modal per menu (E10), onboarding HPP, dan event `term_corrected`.
 - **`apps/web` di-scaffold** (Next 16.4.3, React 19.3, Tailwind 4.3.3, motion 14.6, `@ai-sdk/react` 4 + `ai` 7, zod 4, lucide-react). Paket pendamping yang tidak ada di daftar tapi wajib: `react-dom`, `@tailwindcss/postcss`, `@types/react`, `@types/react-dom`, `@types/node` (diminta Next untuk typecheck), `@types/bun`, dan `typescript` 7.0.2 (sama dengan `apps/api`; terbukti jalan dengan `next build`). Token warna dan copy masih placeholder sampai referensi visual dari Rafee. Pemilik: Rafee.
+- **Landing satu route (`/`); `/demo` dilebur jadi section chat di landing.** Section dan UI placeholder hasil scaffold dihapus; yang tersisa fondasi (config, token, parser format WhatsApp, `use-demo-chat`, `MotionProvider`, Docker/nginx). Endpoint API `POST /demo/chat` tidak berubah. Strategi: page Server Component, island client sekecil mungkin, chat dimuat lazy. Tautan prototype di paper menjadi URL landing. Pemilik: Rafee.
+
 ## 2026-10-25 (grilling engine plan, Rafee; rincian di `docs/engine-plan.md` §7)
 
 - **Q1 Konfirmasi write:** setiap write membuat draft di Postgres (argumen dibekukan, `expires_at`, sekali pakai). Pemilik mengonfirmasi lewat kartu WhatsApp dengan tombol `Ya` / `Ubah` / `Batal`; tap `Ya` diproses kode tanpa model dan mengeksekusi argumen tersimpan. Teks "ya" yang diketik menjadi jalur cadangan: model memanggil `confirmDraft()`, kode hanya mengeksekusi satu-satunya draft terbuka. `toolApproval` AI SDK tidak dipakai, karena uji 2026-10-25 menunjukkan riwayat yang diputar ulang mengeksekusi write lagi. Pemilik: Rafee.
@@ -96,11 +98,23 @@ Format: tanggal, keputusan, alasan, pemilik. Keputusan yang berubah tidak dihapu
 - **Q10 Judge eval:** DeepSeek hanya menjalankan Thya. Judge nada (E13) dan analisis kegagalan dikerjakan Claude di Claude Code atas transkrip run, on demand, tanpa dependency atau key baru. Data seed sintetis boleh dikirim ke Claude. Transkrip uji coba nyata hanya dikirim ke Claude setelah dianonimkan secara natural (nama dan angka diganti pengganti yang realistis). Data sintetis boleh diperkaya dengan usaha seed tambahan. Pemilik: Rafee.
 - **Q9 Arsitektur `apps/api`:** modular monolith ringan ala Siera, bukan DDD. Folder per konsep bisnis (bukan per peran), fungsi bukan class, repository hanya untuk transaksi atau query yang dipakai ulang, satu `DomainError` + satu pemetaan error, job per modul dirangkai di satu file worker. Modul: `business`, `menu`, `sales`, `semantic`, `drafts`, `conversation`, `schedules`, `traces`; antarmuka `agent/`, `channels/whatsapp/`, `http/`. Tool agent memanggil service modul, tidak memakai Drizzle langsung; transisi draft dengan guard `UPDATE … WHERE status='pending'`. Boundary ditegakkan `no-restricted-imports` oxlint (import lintas modul hanya lewat `index.ts`; `agent/` dan `channels/` tidak mengimpor `db/`). Tes integrasi memakai Postgres container (`pgvector/pgvector:0.8.7-pg17`, CI service + lokal) di balik `RUN_INTEGRATION_TESTS=1`, tanpa PGlite. Session engine memegang seluruh `apps/api`; `apps/web`, `docs/paper`, dan `docs/ops` tetap di session lain. Alasan: benchmark Dignition ("DDD") tidak memakai aggregate/VO/event dan aturan isolasinya dilanggar 35 file; aturan import Siera hanya di prosa dan bocor 31–33 kali. Pemilik: Rafee.
 
+## 2026-10-25 (landing: isi dan susunan, Rafee)
+
+- **Susunan landing disetujui:** header, hero, mockup HP 4 tab, how it works (2 poin), live demo Kopi Senja, section status (jalan hari ini vs sedang dikerjakan), footer. Rincian dan copy di `docs/landing-content.md`. Tema visual masih menunggu referensi Rafee. Pemilik: Rafee.
+- **Headline:** "Ask how your shop did today. Get the answer in a chat." Pemilik: Rafee.
+- **Section status dipakai**, karena WhatsApp belum live; landing tidak boleh terbaca seolah Thya sudah bisa dipakai lewat WhatsApp. Pemilik: Rafee.
+- **Isi mockup chat = jawaban asli `/demo/chat` yang dipendekkan** (snapshot 2026-10-25). Tidak ada angka yang ditulis tangan. Pemilik: Rafee.
+- **Landing statis penuh; chat demo live yang memanggil API ditunda.** Landing tidak memanggil `/demo/chat` dulu. Mockup HP tetap memakai jawaban asli prototype. `use-demo-chat.ts` dan `lib/env.ts` dibiarkan tanpa pemakai. Section status menyebut demo web yang bisa dicoba sebagai "sedang dikerjakan". Tautan prototype di paper tetap URL landing; session paper perlu memastikan teksnya tidak menjanjikan chat live. Pemilik: Rafee.
+
 ## 2026-10-25 (fitur bisnis, Rafee menyetujui default `docs/business-features-plan.md`)
 
 - **Gate 0 disetujui sesuai default (G1–G9).** Renderer `@tanstack/charts` + `@resvg/resvg-js` + satu font OFL di `apps/api/assets/fonts/` (cadangan `echarts`). Grafik masuk final setelah rekap jalan. Isi rekap disusun kode, bukan agent; langkah 3 rekap terjadwal di `docs/architecture.md` diganti. Google Sheets lewat service account (pemilik membagikan sheet sebagai Editor), klien `fetch` + JWT tanpa `googleapis`. Email lewat Amazon SES `ap-southeast-3` dengan SigV4 ditulis sendiri, penerima final hanya seed demo yang setuju (allowlist sandbox). Nomor test tetap jalan; nomor asli tanpa verifikasi dicoba di samping. Tiga template utility (rekap harian, rekap mingguan dengan header IMAGE, pengingat). Pemilik: Rafee.
 - **Perubahan keputusan engine yang disetujui:** Q1 diperluas dengan status draft `executing`/`failed` dan `Ubah` = batalkan draft lalu buat draft baru; Q6 balasan bergambar memakai caption, dua pesan hanya kalau balasan > 1.024 karakter; Q7 budget `showChart` ≤ 1 dan `draftPromoEmail` ≤ 2 per giliran; Q9b ditambah modul `visuals`, `attachments`, `recaps`, `sheets`, `customers`, `campaigns`; Q9e thread fitur boleh memegang folder modul barunya sendiri, file bersama tetap di session engine (§8 plan). Pemilik: Rafee.
 - **Scene landing `sheets` dan `email` wajib bisa didemokan 10 Nov**, atau diturunkan di hari yang sama dengan keputusan membuang slice-nya. Urutan buang: S7, S2, pengingat, S6, S5. Pemilik: Rafee.
+
+## 2026-10-25 (sumber data GoPay/QRIS, Rafee)
+
+- **Tidak ada penarikan otomatis dari GoBiz atau bank untuk final.** Rafee memutuskan memakai ekstraksi dari gambar dan berkas yang dikirim pemilik (screenshot riwayat/settlement GoPay Merchant atau m-banking, ekspor laporan) lewat input gambar DeepSeek V4.1 Flash di NetraRuntime. Use case ini wajib dibuka untuk final, dengan syarat akurasinya terbukti pada sampel asli. Ringkasan riset ada di `docs/agent-harness.md` §2. Pemilik: Rafee.
 
 ## 2026-10-25 (praktik agent dari startup, Rafee menyetujui rekomendasi session engine atas `docs/agent-practices.md`)
 
@@ -115,3 +129,12 @@ Format: tanggal, keputusan, alasan, pemilik. Keputusan yang berubah tidak dihapu
 - **U10 Daftar tool:** tool yang tidak dikonfigurasi di deployment (misalnya Sheets tanpa kredensial) tidak didaftarkan; tool yang bergantung pada keadaan data usaha tetap didaftarkan dan membalas status `not_ready` dengan panduan; daftar tool tidak berubah di tengah thread. Menyempurnakan A7 di `docs/engine-plan.md`. Dampak ke cache belum diukur. Pemilik: Rafee.
 - **U11–U15 Roadmap:** simulasi persona, judge kedua dari keluarga model lain, sinyal implisit, rilis snapshot dengan rollback, pemantauan quality rating nomor WhatsApp.
 - **Klaim paper:** angka eval ditulis sebagai hasil offline di data sintetis satu toko. Pemilik isi paper: Indy dan Nawra.
+
+## 2026-10-25 · Landing: revisi tim (marketing dan bisnis)
+
+- **Pilihan A/B final:** Meet Thya memakai varian Character (A). Kata-kata yang melayang diganti tile aplikasi UMKM: GoFood, GrabFood, ShopeeFood, WhatsApp, Google Sheets, Gmail. Glyph-nya dari Simple Icons (CC0), di-inline tanpa dependency. Latar ASCII DeveloperDay memakai Flow (A), dan footer memakai Untangle (C). Semua switcher dihapus. Pemilik: Rafee.
+- **Role tim di footer:** Indy (Product Owner), Nawra (Business Analyst), Rafee (AI Engineer).
+- **Diagram Problem:** meniru layout "Inside the intelligence layer" dari nalarx.com dengan palet Thya: sumber data → engine Thya → toko pemilik.
+- **Testimonial:** section carousel ditambahkan di atas FAQ, berisi cerita ilustratif dengan nama fiktif. Catatan "fictional" di halaman dihapus atas keputusan Rafee (2026-10-25), walau FAQ menyatakan Thya belum dipakai di WhatsApp. Ganti dengan kutipan pilot asli begitu ada.
+- **Terbuka:** sekarang landing mengklaim "Works with your apps" (GoFood, GrabFood, ShopeeFood, WhatsApp, Sheets), padahal belum ada konektor yang jalan. Rafee perlu memutuskan apakah ini dibangun sebelum final atau copy-nya dilunakkan.
+- **Demo statis:** rencananya ada di `docs/landing-demo-plan.md` dan masih menunggu 3 keputusan Rafee.
