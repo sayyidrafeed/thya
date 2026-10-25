@@ -1,3 +1,4 @@
+import { DemoVideo } from "@/components/landing/demo-video";
 import { DeveloperDayCta } from "@/components/landing/developerday-cta";
 import { Faq } from "@/components/landing/faq";
 import { Hero } from "@/components/landing/hero";
@@ -20,6 +21,7 @@ export default function HomePage() {
           <MeetThya />
           <Problem />
           <HowItWorks />
+          <DemoVideo />
           <Playground />
           <Testimonials />
           <Faq />
