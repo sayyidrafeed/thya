@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PAYMENT_METHODS } from "../modules/payments-import";
 import { scheduleSpecSchema, type ScheduleSpec } from "../modules/schedules";
 
 // What each draft kind freezes at draft time (decision Q1, engine-plan B3). The executor runs these
@@ -29,6 +30,21 @@ export const menuCostArgs = z.object({
   validFrom: z.iso.date(),
 });
 
+export const paymentsImportArgs = z.object({
+  imageSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  rows: z
+    .array(
+      z.object({
+        paidAt: z.iso.datetime({ offset: true }),
+        amount: z.number().int().positive(),
+        method: z.enum(PAYMENT_METHODS),
+        sourceRef: z.string().nullable(),
+        sourceRow: z.number().int().nonnegative(),
+      }),
+    )
+    .min(1),
+});
+
 export const scheduleCancelArgs = z.object({ scheduleId: z.string(), summary: z.string() });
 
 export type SalesRecordArgs = z.infer<typeof salesRecordArgs>;
@@ -39,7 +55,8 @@ export type DraftRequest =
   | { kind: "sales.record"; args: SalesRecordArgs; summary: string }
   | { kind: "menu.set_cost"; args: MenuCostArgs; summary: string }
   | { kind: "schedule.create"; args: ScheduleSpec; summary: string }
-  | { kind: "schedule.cancel"; args: z.infer<typeof scheduleCancelArgs>; summary: string };
+  | { kind: "schedule.cancel"; args: z.infer<typeof scheduleCancelArgs>; summary: string }
+  | { kind: "payments.import"; args: z.infer<typeof paymentsImportArgs>; summary: string };
 
 export type DraftKind = DraftRequest["kind"];
 
@@ -49,6 +66,7 @@ export const storedDraftSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("menu.set_cost"), args: menuCostArgs }),
   z.object({ kind: z.literal("schedule.create"), args: scheduleSpecSchema }),
   z.object({ kind: z.literal("schedule.cancel"), args: scheduleCancelArgs }),
+  z.object({ kind: z.literal("payments.import"), args: paymentsImportArgs }),
 ]);
 
 export type StoredDraft = z.infer<typeof storedDraftSchema>;

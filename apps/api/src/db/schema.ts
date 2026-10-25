@@ -124,6 +124,41 @@ export const transactions = pgTable(
   ],
 );
 
+// modules/payments-import (business-features-plan S9, G10 default): money in from QRIS/GoPay,
+// kept apart from per-menu sales so menu revenue is never counted twice.
+export const paymentMethod = pgEnum("payment_method", ["qris", "gopay", "transfer", "lainnya"]);
+export const paymentSource = pgEnum("payment_source", ["screenshot", "sheet", "chat"]);
+
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    businessId: uuid()
+      .notNull()
+      .references(() => businesses.id),
+    paidAt: timestamp({ withTimezone: true }).notNull(),
+    amount: integer().notNull(),
+    method: paymentMethod().notNull(),
+    source: paymentSource().notNull(),
+    sourceRef: text(),
+    imageSha256: text(),
+    // Row index within one extraction; a safety net only, since row order can shift between reads.
+    sourceRow: integer(),
+    draftId: uuid(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index().on(table.businessId, table.paidAt),
+    uniqueIndex("payments_source_ref_unique")
+      .on(table.businessId, table.source, table.sourceRef)
+      .where(sql`${table.sourceRef} IS NOT NULL`),
+    uniqueIndex("payments_image_row_unique")
+      .on(table.businessId, table.imageSha256, table.sourceRow)
+      .where(sql`${table.imageSha256} IS NOT NULL`),
+    check("payment_amount_positive", sql`${table.amount} > 0`),
+  ],
+);
+
 // modules/conversation (inbound WhatsApp first, so a redelivered webhook is dropped by wamid)
 export const inboundMessages = pgTable(
   "inbound_messages",

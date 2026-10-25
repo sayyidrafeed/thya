@@ -66,6 +66,7 @@ describe.if(integration)("schedules", () => {
         model: scriptedModel(script),
         delivery: { db, client, loadImage: async () => null },
         now: () => at,
+        paymentsImport: false,
       },
       OWNER,
     );
@@ -126,6 +127,7 @@ describe.if(integration)("schedules", () => {
           loadImage: async () => null,
         },
         now: () => NOW,
+        paymentsImport: false,
       },
       OWNER,
     );

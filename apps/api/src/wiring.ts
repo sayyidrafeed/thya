@@ -31,7 +31,10 @@ export async function startWorkers(db: Db, databaseUrl: string) {
 
   await startJobs(boss, {
     db,
-    agentTurn: delivery === null ? null : { db, model: chatModel, delivery, now },
+    agentTurn:
+      delivery === null
+        ? null
+        : { db, model: chatModel, delivery, now, paymentsImport: env.PAYMENTS_IMPORT_ENABLED },
     schedules: delivery === null ? null : { db, now, templates },
   });
 

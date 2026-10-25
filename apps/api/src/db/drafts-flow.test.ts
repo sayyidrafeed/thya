@@ -69,7 +69,13 @@ describe.if(integration)("drafts over WhatsApp", () => {
     ]);
 
     await handleAgentTurn(
-      { db, model, delivery: { db, client, loadImage: async () => null }, now: () => at },
+      {
+        db,
+        model,
+        delivery: { db, client, loadImage: async () => null },
+        now: () => at,
+        paymentsImport: false,
+      },
       OWNER,
     );
 

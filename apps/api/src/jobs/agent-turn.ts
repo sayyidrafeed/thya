@@ -5,6 +5,8 @@ import { CAPTION_LIMIT, TEXT_LIMIT } from "../channels/whatsapp/client";
 import { deliverPending, type Delivery } from "../channels/whatsapp/deliver";
 import { toWhatsAppText, splitText } from "../channels/whatsapp/format";
 import { messageSchema, readContent } from "../channels/whatsapp/inbound";
+import type { DraftOutcome } from "../actions/kinds";
+import { readPaymentImage } from "./payment-image";
 import type { Db } from "../db/client";
 import { findBusinessByPhone, type Business } from "../modules/business";
 import {
@@ -26,6 +28,16 @@ export type AgentTurnDeps = {
   model: Exclude<LanguageModel, string>;
   delivery: Delivery;
   now: () => Date;
+  // Gate G11: QRIS/GoPay screenshots are read only when this is on.
+  paymentsImport: boolean;
+};
+
+// What the thread records for a screenshot: never its content (A8), only that it came.
+const IMAGE_NOTE = "[Pemilik mengirim gambar]";
+
+const TAINTED_CONFIRM: DraftOutcome = {
+  status: "none",
+  message: "Untuk pesan yang ada gambarnya, konfirmasi lewat tombol Ya di kartu ya Kak.",
 };
 
 // Engine-plan A9: more than this many messages in a minute gets one throttle reply, no model turn.
@@ -83,10 +95,12 @@ function draftCard(to: string, draft: TurnDraft): Outbound {
   };
 }
 
-type Tap = { wamid: string; tapped: string; reply: string };
+// A message code answered itself: a tapped button, or a payment screenshot (S9).
+type Tap = { wamid: string; tapped: string; reply: string; card: TurnDraft | null };
 
-// Owner words for the model, in arrival order, plus the taps code already answered.
-type Batch = { texts: string[]; answered: Tap[] };
+// Owner words for the model, in arrival order, plus what code already answered. `tainted`: the
+// batch carried a picture, so a typed "ya" in it confirms nothing (engine-plan A14).
+type Batch = { texts: string[]; answered: Tap[]; tainted: boolean };
 
 type InboundRow = Awaited<ReturnType<typeof unprocessedInbound>>[number];
 
@@ -108,12 +122,38 @@ async function answerTap(
 }
 
 async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundRow[]) {
-  const batch: Batch = { texts: [], answered: [] };
+  const batch: Batch = { texts: [], answered: [], tainted: false };
 
   for (const row of rows) {
     const content = readContent(messageSchema.parse(row.payload));
 
     if (content.kind === "text") batch.texts.push(content.text);
+
+    if (content.kind === "image") {
+      if (content.caption) batch.texts.push(content.caption);
+
+      if (!deps.paymentsImport) continue;
+
+      batch.tainted = true;
+
+      const read = await readPaymentImage(
+        { db: deps.db, model: deps.model, client: deps.delivery.client },
+        {
+          businessId: business.id,
+          mediaId: content.mediaId,
+          now: deps.now(),
+          traceId: newTraceId(),
+        },
+      );
+
+      batch.answered.push({
+        wamid: row.wamid,
+        tapped: IMAGE_NOTE,
+        reply: read.reply,
+        card: read.draft,
+      });
+      continue;
+    }
 
     if (content.kind !== "button") continue;
 
@@ -129,7 +169,8 @@ async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundR
 
     if (edit) batch.texts.push(content.title);
 
-    if (reply !== null) batch.answered.push({ wamid: row.wamid, tapped: content.title, reply });
+    if (reply !== null)
+      batch.answered.push({ wamid: row.wamid, tapped: content.title, reply, card: null });
   }
 
   return batch;
@@ -143,11 +184,17 @@ function tapHistory(answered: Tap[]): ModelMessage[] {
   ]);
 }
 
-async function runAgent(deps: AgentTurnDeps, business: Business, texts: string[], traceId: string) {
+async function runAgent(
+  deps: AgentTurnDeps,
+  business: Business,
+  { texts, tainted }: { texts: string[]; tainted: boolean },
+  traceId: string,
+) {
   const { db } = deps;
   const now = deps.now();
   const known = await loadConceptEvents(db, business.id);
   const owner: ModelMessage = { role: "user", content: texts.join("\n") };
+  const drafts = dbDraftPort(db, { businessId: business.id, traceId, now });
 
   const turn = await runTurn({
     model: deps.model,
@@ -157,7 +204,7 @@ async function runAgent(deps: AgentTurnDeps, business: Business, texts: string[]
     conceptEvents: known,
     now,
     formatReply: toWhatsAppText,
-    drafts: dbDraftPort(db, { businessId: business.id, traceId, now }),
+    drafts: tainted ? { ...drafts, confirmOpen: async () => TAINTED_CONFIRM } : drafts,
     attachments: attachmentPort(db, business.id, now),
   });
 
@@ -177,7 +224,8 @@ async function answer(
     phone,
     wamids,
     texts,
-  }: { business: Business; phone: string; wamids: string[]; texts: string[] },
+    tainted,
+  }: { business: Business; phone: string; wamids: string[]; texts: string[]; tainted: boolean },
 ) {
   const traceId = newTraceId();
   const started = Date.now();
@@ -188,7 +236,7 @@ async function answer(
     let result: { owner: ModelMessage; turn: TurnResult };
 
     try {
-      result = await runAgent(deps, business, texts, traceId);
+      result = await runAgent(deps, business, { texts, tainted }, traceId);
     } catch (error) {
       await recordFailedTurn(deps.db, {
         traceId,
@@ -289,10 +337,14 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
     traceId: newTraceId(),
     wamids: batch.texts.length === 0 ? wamids : [],
     history: tapHistory(batch.answered),
-    outbound: batch.answered.flatMap((tap) => textOutbound(phone, `tap:${tap.wamid}`, tap.reply)),
+    outbound: batch.answered.flatMap((tap) => [
+      ...textOutbound(phone, `tap:${tap.wamid}`, tap.reply),
+      ...(tap.card ? [draftCard(phone, tap.card)] : []),
+    ]),
   });
 
-  if (batch.texts.length > 0) await answer(deps, { business, phone, wamids, texts: batch.texts });
+  if (batch.texts.length > 0)
+    await answer(deps, { business, phone, wamids, texts: batch.texts, tainted: batch.tainted });
 
   await deliverPending(delivery, phone);
 }

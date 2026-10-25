@@ -56,7 +56,8 @@ export function graph(responses: Response[]) {
 }
 
 // A Graph API that accepts everything, unless a test queues a failure for the next calls.
-export function fakeGraph() {
+// `media` holds the pictures an owner "sent", by media id.
+export function fakeGraph(media = new Map<string, Uint8Array>()) {
   const calls: GraphCall[] = [];
   const failures: Response[] = [];
 
@@ -67,6 +68,18 @@ export function fakeGraph() {
     if (failure) return failure;
 
     calls.push({ url, body });
+
+    const download = /^https:\/\/lookaside\.test\/(.+)$/.exec(url)?.[1];
+    const info = /\/v\d+\.\d+\/([^/]+)$/.exec(url)?.[1];
+
+    if (download !== undefined) return new Response(media.get(download));
+
+    if (init.method === "GET" && info !== undefined && media.has(info))
+      return Response.json({
+        url: `https://lookaside.test/${info}`,
+        mime_type: "image/png",
+        file_size: media.get(info)?.byteLength,
+      });
 
     if (url.endsWith("/media")) return Response.json({ id: `media.${calls.length}` });
 

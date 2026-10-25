@@ -88,6 +88,7 @@ describe.if(integration)("whatsapp flow", () => {
       model,
       delivery: { db, client, loadImage: async () => null },
       now: () => NOW,
+      paymentsImport: false,
       graph,
     };
   }

@@ -73,6 +73,18 @@ const errorSchema = z.object({
 const sentSchema = z.object({ messages: z.array(z.object({ id: z.string() })).min(1) });
 const mediaSchema = z.object({ id: z.string() });
 
+const mediaInfoSchema = z.object({
+  url: z.url(),
+  mime_type: z.string(),
+  file_size: z.number().optional(),
+});
+
+// S9: only pictures Thya can read, and not huge ones.
+export const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
+export const READABLE_IMAGES = ["image/jpeg", "image/png"] as const;
+
+export type DownloadedImage = { bytes: Uint8Array; mediaType: (typeof READABLE_IMAGES)[number] };
+
 async function failure(response: Response): Promise<WhatsAppError> {
   const parsed = errorSchema.safeParse(await response.json().catch(() => null));
   const code = parsed.success ? (parsed.data.error.code ?? null) : null;
@@ -155,6 +167,30 @@ export function createWhatsAppClient(config: WhatsAppConfig, fetcher: Fetch = fe
         message_id: wamid,
         typing_indicator: { type: "text" },
       });
+    },
+
+    // Media URLs live five minutes, so the job downloads right away (harness §4). Null = a type
+    // or size Thya does not read.
+    downloadImage: async (mediaId: string): Promise<DownloadedImage | null> => {
+      const info = await fetcher(`https://graph.facebook.com/${config.graphVersion}/${mediaId}`, {
+        method: "GET",
+        headers: auth,
+      });
+
+      if (!info.ok) throw await failure(info);
+
+      const meta = mediaInfoSchema.parse(await info.json());
+      const mediaType = READABLE_IMAGES.find((type) => meta.mime_type.startsWith(type));
+
+      if (mediaType === undefined || (meta.file_size ?? 0) > MAX_MEDIA_BYTES) return null;
+
+      const file = await fetcher(meta.url, { method: "GET", headers: auth });
+
+      if (!file.ok) throw await failure(file);
+
+      const bytes = new Uint8Array(await file.arrayBuffer());
+
+      return bytes.byteLength > MAX_MEDIA_BYTES ? null : { bytes, mediaType };
     },
 
     uploadImage: async (png: Uint8Array): Promise<string> => {

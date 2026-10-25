@@ -1,6 +1,7 @@
 import type { AttachmentPort } from "../agent";
 import type { Db } from "../db/client";
 import { saveAttachment } from "../modules/attachments";
+import { insertPayments } from "../modules/payments-import";
 import {
   cancelDraft,
   claimDraft,
@@ -47,6 +48,15 @@ async function execute(
     const row = await createSchedule(db, { businessId, spec: draft.args, now });
 
     return `Siap, Kak. ${scheduleSummary(draft.args)}. Yang pertama ${runLabel(row.nextRunAt)}.`;
+  }
+
+  if (draft.kind === "payments.import") {
+    const added = await insertPayments(db, { businessId, draftId, ...draft.args });
+    const already = draft.args.rows.length - added;
+
+    return already === 0
+      ? `Sudah dicatat, Kak: ${added} pembayaran masuk.`
+      : `Sudah dicatat, Kak: ${added} pembayaran baru, ${already} sudah ada sebelumnya.`;
   }
 
   if (draft.kind === "schedule.cancel")

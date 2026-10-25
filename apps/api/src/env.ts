@@ -27,6 +27,11 @@ const envSchema = z.object({
   WHATSAPP_RECAP_TEMPLATE: z.string().min(1).optional(),
   WHATSAPP_REMINDER_TEMPLATE: z.string().min(1).optional(),
   WHATSAPP_TEMPLATE_LANGUAGE: z.string().min(2).default("id"),
+  // Gate G11: reading QRIS/GoPay screenshots stays off until real screenshots pass S9-AC1.
+  PAYMENTS_IMPORT_ENABLED: z
+    .enum(["0", "1"])
+    .default("0")
+    .transform((value) => value === "1"),
   WHATSAPP_GRAPH_VERSION: z
     .string()
     .regex(/^v\d+\.\d+$/)
