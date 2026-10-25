@@ -143,7 +143,7 @@ Satu Postgres dengan pgvector, diakses lewat Drizzle. Tabel awal (usulan): `busi
 
 | Komponen | Tempat | Catatan |
 |---|---|---|
-| `apps/web` | Image nginx dari GHCR (pola Siera / nalarx-docs), domain `thya.veterantech.id` | Next `output: "export"` → `out/`, di-gzip saat build, disajikan `nginx-unprivileged`. Tempat container berjalan belum diputuskan; kandidat paling sederhana adalah Dokploy di VPS yang sama |
+| `apps/web` | Image nginx `ghcr.io/sayyidrafeed/thya-web` (pola Siera / nalarx-docs), dijalankan Dokploy di VPS yang sama, domain `thya.veterantech.id` | Next `output: "export"` → `out/`, di-gzip saat build, disajikan `nginx-unprivileged`. URL API ditanam saat build lewat `NEXT_PUBLIC_API_URL` |
 | `apps/api` server + worker | VPS Sumopod (Tencent, Jakarta), dikelola Dokploy | Domain `thya-api.sayyidrafee.com` (juga URL webhook WhatsApp). Image dibangun GitHub Actions ke `ghcr.io/sayyidrafeed/thya-api`, lalu Dokploy menarik image itu. Env diisi di Dokploy. HTTPS lewat Traefik bawaan Dokploy + Let's Encrypt |
 | Postgres + pgvector | Service database Dokploy di VPS yang sama | Rencana: image `pgvector/pgvector:0.8.7-pg17`, tanpa port publik, backup harian 02.00 WIB ke Cloudflare R2. Belum dibuat (ditunda 2026-10-25, `apps/api` belum memakai DB) |
 | Dashboard Dokploy | `deploy.sayyidrafee.com` | Port 3000 tidak di-publish; akses hanya lewat HTTPS |

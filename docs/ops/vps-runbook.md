@@ -15,7 +15,7 @@ Disiapkan 2026-10-25. Pemilik: Rafee.
 | Dokploy | v0.30.10 (Docker Swarm satu node, Traefik v3.6) |
 | Dashboard | https://deploy.sayyidrafee.com |
 | API + webhook WhatsApp | https://thya-api.sayyidrafee.com |
-| Landing | `thya.veterantech.id` (belum diarahkan ke VPS ini; lihat [Status](#status-dan-yang-masih-menunggu)) |
+| Landing + `/demo` | https://thya.veterantech.id |
 
 **Batas egress Tencent bersifat keras.** Kalau kuota bandwidth bulanan habis, VPS dimatikan otomatis sampai bulan berikutnya ([docs Sumopod](https://docs.sumopod.com/guides/vps/monitor-bandwidth)). Cek tab **Usage** di panel sebelum demo, dan jangan memakai VPS ini untuk menyajikan file besar.
 
@@ -74,7 +74,7 @@ Semua record **DNS only** (awan abu-abu di Cloudflare). Traefik mengambil sertif
 |---|---|---|---|---|
 | `sayyidrafee.com` | A | `deploy` | `43.173.20.60` | aktif |
 | `sayyidrafee.com` | A | `thya-api` | `43.173.20.60` | aktif |
-| `veterantech.id` | A | `thya` | `43.173.20.60` | belum dibuat; menunggu keputusan tempat landing |
+| `veterantech.id` | A | `thya` | `43.173.20.60` | aktif |
 
 ## Postgres
 
@@ -126,7 +126,7 @@ push ke main → CI (fmt, lint, typecheck, test)
 |---|---|---|
 | `API_PUBLIC_URL` | variable | `https://thya-api.sayyidrafee.com` (build arg `NEXT_PUBLIC_API_URL` untuk web) |
 | `DOKPLOY_API_WEBHOOK_URL` | **secret** | Webhook URL aplikasi `thya-api` (tab General → Auto Deploy on, lalu tab Deployments → Webhook URL). Diisi Rafee sendiri; token di URL itu cukup untuk memicu deploy |
-| `DOKPLOY_WEB_WEBHOOK_URL` | **secret** | Sama, untuk aplikasi web kalau landing jalan di VPS ini |
+| `DOKPLOY_WEB_WEBHOOK_URL` | **secret** | Sama, untuk aplikasi `web` |
 
   Kalau secret webhook belum diisi, workflow tetap mem-publish image dan melewati langkah deploy. Webhook dipilih daripada API key Dokploy karena API key setara akses admin, sedangkan webhook hanya bisa memicu deploy satu aplikasi. Kalau URL bocor, buat ulang token di Dokploy (Deployments → Refresh Token).
 
@@ -137,6 +137,14 @@ push ke main → CI (fmt, lint, typecheck, test)
 - Domain: `thya-api.sayyidrafee.com`, path `/`, container port `3001`, HTTPS Let's Encrypt.
 - Health check: `GET /health` → `{"ok":true}`.
 - Rollback: ubah image ke `ghcr.io/sayyidrafeed/thya-api:sha-<commit-sebelumnya>`, lalu Deploy. Kembalikan ke `:main` setelah perbaikan di-push.
+
+### Aplikasi `web` (landing + `/demo`) di Dokploy
+
+- Project `thya` → Application `web`, Provider **Docker**: image `ghcr.io/sayyidrafeed/thya-web:main`, Registry URL `ghcr.io`, tanpa kredensial. Tidak ada env; URL API sudah tertanam saat build (variable repo `API_PUBLIC_URL`, termasuk di `connect-src` CSP).
+- Domain: `thya.veterantech.id`, path `/`, container port `3000` (nginx-unprivileged), HTTPS Let's Encrypt.
+- Mengganti URL API berarti ubah `API_PUBLIC_URL` di GitHub, lalu build ulang. Env di Dokploy tidak berpengaruh untuk web.
+
+Diverifikasi 2026-10-25: `/` dan `/demo` → 200; header CSP, `X-Frame-Options: DENY`, dan `nosniff` aktif; preflight CORS dari origin landing → 204; satu pesan `/demo/chat` lewat jalur publik dijawab sampai `finishReason: stop`.
 
 ## Operasi rutin
 
@@ -196,5 +204,6 @@ Per 2026-10-25:
 - [x] Repo `sayyidrafeed/thya` (public) di GitHub
 - [x] CI/CD GitHub Actions → GHCR → webhook Dokploy, diuji ujung ke ujung; `https://thya-api.sayyidrafee.com/health` → `{"ok":true}`
 - [ ] Aktifkan 2FA Dokploy (belum dikonfirmasi)
-- [ ] Keputusan tempat landing `thya.veterantech.id` (VPS ini atau tempat lain) + record DNS-nya
+- [x] Landing `thya.veterantech.id` di Dokploy VPS ini, redeploy otomatis lewat webhook
+- [ ] Aktifkan pembersihan image Docker harian di Dokploy (disk 12 GB terpakai per 2026-10-25; setiap deploy menambah image lama)
 - [ ] Catat batas bandwidth paket dari tab Usage
