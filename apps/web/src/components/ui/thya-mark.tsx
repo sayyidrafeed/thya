@@ -4,6 +4,7 @@ import Image from "next/image";
 const sizes = {
   sm: { width: 23, height: 28, className: "h-7 w-auto" },
   md: { width: 29, height: 36, className: "h-9 w-auto" },
+  lg: { width: 39, height: 48, className: "h-12 w-auto" },
 } as const;
 
 export function ThyaMark({ size = "sm" }: { size?: keyof typeof sizes }) {

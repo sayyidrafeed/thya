@@ -1,67 +1,24 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 
-import { useSvgPathsClock } from "@/hooks/use-svg-paths-clock";
-import { artBox, footerArts } from "@/lib/footer-art/patterns";
+import { ThyaMark } from "@/components/ui/thya-mark";
+import { useConvergenceCanvas } from "@/hooks/use-convergence-canvas";
 
-function ArtCanvas({ artIndex }: { artIndex: number }) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const art = footerArts[artIndex] ?? footerArts[0];
-
-  useSvgPathsClock(svgRef, art.paths);
-
-  return (
-    <svg
-      ref={svgRef}
-      aria-hidden="true"
-      viewBox={`0 0 ${artBox.width} ${artBox.height}`}
-      preserveAspectRatio="xMidYMax slice"
-      className="pointer-events-none absolute inset-0 size-full text-brand"
-    >
-      {art.paths(0).map((d, index) => (
-        <path
-          // oxlint-disable-next-line react/no-array-index-key -- paths are positional; index is their identity
-          key={index}
-          d={d}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1}
-          strokeOpacity={art.opacity(index)}
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
-    </svg>
-  );
-}
-
-// The A/B/C switcher is for the team review; keep one art and drop the switcher once picked.
+// Scattered sales records (fibres) flowing into one answer (the mark at the focus point).
 export function FooterArt() {
-  const [artIndex, setArtIndex] = useState(0);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useConvergenceCanvas(canvasRef);
 
   return (
-    <div className="relative h-96 overflow-hidden md:h-[30rem]">
-      <ArtCanvas key={artIndex} artIndex={artIndex} />
-      <fieldset className="absolute top-4 right-4 flex gap-1 rounded-control border-0 glass p-1">
-        <legend className="sr-only">Footer art</legend>
-        {footerArts.map((art, index) => (
-          <button
-            key={art.id}
-            type="button"
-            aria-pressed={index === artIndex}
-            onClick={() => setArtIndex(index)}
-            className="min-h-9 rounded-control px-3 font-mono text-label text-ink-muted transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-pressed:bg-ink aria-pressed:text-surface"
-          >
-            {String.fromCharCode(65 + index)}
-            <span className="hidden sm:inline"> · {art.label}</span>
-          </button>
-        ))}
-      </fieldset>
-      <p
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 -bottom-[0.1em] text-center text-wordmark font-semibold text-ink select-none md:text-wordmark-md xl:text-wordmark-xl"
-      >
-        Thya
+    <div className="relative isolate h-96 overflow-hidden md:h-[30rem]">
+      <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 -z-10 size-full" />
+      <span className="absolute top-1/2 left-1/2 grid size-20 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full glass">
+        <ThyaMark size="lg" />
+      </span>
+      <p className="absolute top-[calc(50%+3.5rem)] left-1/2 -translate-x-1/2 rounded-control bg-surface/80 px-3 py-1 text-caption whitespace-nowrap text-ink-muted backdrop-blur-sm">
+        Many records in. One answer out.
       </p>
     </div>
   );
