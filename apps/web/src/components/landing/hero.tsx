@@ -4,6 +4,7 @@ import { m } from "motion/react";
 
 import { HeroHeading } from "@/components/landing/hero-heading";
 import { UseCaseShowcase } from "@/components/landing/use-case-showcase";
+import { useChatThread } from "@/hooks/use-chat-thread";
 import { useUseCaseCycle } from "@/hooks/use-use-case-cycle";
 import { mockupConversations } from "@/lib/landing/mockup-conversations";
 
@@ -11,6 +12,7 @@ const ease = [0.22, 1, 0.36, 1] as const;
 
 export function Hero() {
   const { activeIndex, select } = useUseCaseCycle(mockupConversations.length);
+  const entries = useChatThread(activeIndex);
 
   return (
     <section className="mx-auto flex w-full max-w-page flex-col items-center gap-8 px-4 pt-14 pb-section sm:px-6 md:pt-20">
@@ -47,11 +49,7 @@ export function Hero() {
         transition={{ delay: 0.8, duration: 0.8, ease }}
         className="mt-6 w-full"
       >
-        <UseCaseShowcase activeIndex={activeIndex} onSelect={select} />
-        <p className="mt-3 text-center text-caption text-ink-muted">
-          Real answers from our prototype, using sample sales data from Kopi Senja, a coffee shop in
-          Yogyakarta.
-        </p>
+        <UseCaseShowcase activeIndex={activeIndex} entries={entries} onSelect={select} />
       </m.div>
     </section>
   );

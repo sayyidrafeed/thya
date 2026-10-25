@@ -1,6 +1,7 @@
 "use client";
 
 import { PhoneMockup } from "@/components/landing/phone-mockup";
+import type { ThreadEntry } from "@/hooks/use-chat-thread";
 import { mockupConversations } from "@/lib/landing/mockup-conversations";
 
 const placementClass = [
@@ -12,13 +13,13 @@ const placementClass = [
 
 export function UseCaseShowcase({
   activeIndex,
+  entries,
   onSelect,
 }: {
   activeIndex: number;
+  entries: ThreadEntry[];
   onSelect: (index: number) => void;
 }) {
-  const active = mockupConversations[activeIndex] ?? mockupConversations[0];
-
   return (
     <div className="grid grid-cols-2 gap-3 rounded-panel border border-line bg-surface-muted p-3 sm:p-5 lg:grid-cols-[1fr_auto_1fr] lg:grid-rows-2 lg:gap-x-10 lg:gap-y-6 lg:p-10">
       {mockupConversations.map((conversation, index) => (
@@ -43,7 +44,7 @@ export function UseCaseShowcase({
         </button>
       ))}
       <div className="col-span-2 flex justify-center pt-3 lg:col-span-1 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:pt-0">
-        <PhoneMockup conversation={active} />
+        <PhoneMockup entries={entries} />
       </div>
     </div>
   );

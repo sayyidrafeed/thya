@@ -38,7 +38,7 @@ function sample(curve: Curve) {
 
 // A: scattered records from both edges converge on the mark ("many records, one answer").
 function converge(): Fibre[] {
-  return Array.from({ length: 132 }, (_, i) => {
+  return Array.from({ length: 56 }, (_, i) => {
     const side = i % 2 === 0 ? -1 : 1;
     const seed = seeded(i);
     const startX = focus.x + side * (focus.x + 40);
@@ -60,7 +60,7 @@ function converge(): Fibre[] {
 
 // B: one question in the middle, answers fanning out across the shop.
 function radiate(): Fibre[] {
-  return Array.from({ length: 150 }, (_, i) => {
+  return Array.from({ length: 64 }, (_, i) => {
     const seed = seeded(i);
     const angle = seeded(i, 1) * Math.PI * 2;
     const curl = (seeded(i, 2) - 0.5) * 1.1;
@@ -83,7 +83,7 @@ function radiate(): Fibre[] {
 
 // C: tangled lines on the left are pinched through Thya and leave as one tidy bundle on the right.
 function untangle(): Fibre[] {
-  return Array.from({ length: 120 }, (_, i) => {
+  return Array.from({ length: 52 }, (_, i) => {
     const seed = seeded(i);
     const startY = 10 + seeded(i, 1) * (artBox.height - 20);
     const pinchY = focus.y + (seeded(i, 2) - 0.5) * 22;

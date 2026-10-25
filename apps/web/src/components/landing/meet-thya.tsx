@@ -1,75 +1,50 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useRef } from "react";
+import { useState } from "react";
 
+import { MeetThyaCarousel } from "@/components/landing/meet-thya-carousel";
+import { MeetThyaSpotlight } from "@/components/landing/meet-thya-spotlight";
 import { SectionHeading } from "@/components/landing/section-heading";
-import { useCarousel } from "@/hooks/use-carousel";
-import { meetThyaHeading, thyaTraits } from "@/lib/landing/meet-thya";
+import { meetThyaHeading } from "@/lib/landing/meet-thya";
 
-const controlClass =
-  "glass grid size-11 place-items-center rounded-full text-ink transition duration-200 active:scale-95 disabled:opacity-35 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
+const variants = [
+  { id: "carousel", label: "Carousel", Layout: MeetThyaCarousel },
+  { id: "spotlight", label: "Spotlight", Layout: MeetThyaSpotlight },
+] as const;
 
+// The A/B switcher is for the team review; keep one layout and drop the switcher once picked.
 export function MeetThya() {
-  const trackRef = useRef<HTMLUListElement>(null);
-  const { canPrev, canNext, page } = useCarousel(trackRef);
+  const [variantIndex, setVariantIndex] = useState(0);
+  const { Layout } = variants[variantIndex] ?? variants[0];
 
   return (
     <section
       id="meet-thya"
       aria-labelledby="meet-thya-title"
-      className="scroll-mt-20 overflow-hidden py-section"
+      className="flex scroll-mt-20 flex-col gap-10 overflow-hidden py-section"
     >
-      <div className="mx-auto flex w-full max-w-page items-end justify-between gap-6 px-4 sm:px-6">
+      <div className="mx-auto flex w-full max-w-page flex-wrap items-end justify-between gap-6 px-4 sm:px-6">
         <SectionHeading
           align="start"
           eyebrow="Meet Thya"
-          title={<span id="meet-thya-title">{meetThyaHeading.quotes}</span>}
+          title={<span id="meet-thya-title">{meetThyaHeading}</span>}
         />
-        <div className="hidden shrink-0 gap-2 sm:flex">
-          <button
-            type="button"
-            aria-label="Previous"
-            disabled={!canPrev}
-            onClick={() => page(-1)}
-            className={controlClass}
-          >
-            <ChevronLeft aria-hidden="true" className="size-5" />
-          </button>
-          <button
-            type="button"
-            aria-label="Next"
-            disabled={!canNext}
-            onClick={() => page(1)}
-            className={controlClass}
-          >
-            <ChevronRight aria-hidden="true" className="size-5" />
-          </button>
-        </div>
+        <fieldset className="flex gap-1 rounded-control border-0 glass p-1">
+          <legend className="sr-only">Meet Thya layout</legend>
+          {variants.map((variant, index) => (
+            <button
+              key={variant.id}
+              type="button"
+              aria-pressed={index === variantIndex}
+              onClick={() => setVariantIndex(index)}
+              className="min-h-9 rounded-control px-3 font-mono text-label text-ink-muted transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-pressed:bg-ink aria-pressed:text-surface"
+            >
+              {String.fromCharCode(65 + index)} · {variant.label}
+            </button>
+          ))}
+        </fieldset>
       </div>
-      <ul
-        ref={trackRef}
-        aria-label="What Thya sounds like"
-        className="mt-12 no-scrollbar flex snap-x snap-mandatory scroll-px-gutter gap-4 overflow-x-auto px-gutter pb-6"
-      >
-        {thyaTraits.map((trait, index) => (
-          <li
-            key={trait.id}
-            className="flex min-h-96 w-[min(82vw,22rem)] shrink-0 snap-start flex-col rounded-panel bg-surface-muted p-7 sm:p-8"
-          >
-            <p className="font-mono text-label text-ink-muted tabular-nums">
-              {String(index + 1).padStart(2, "0")}
-            </p>
-            <h3 className="mt-3 text-title font-semibold text-balance">{trait.title}</h3>
-            <p className="mt-2 text-caption text-pretty text-ink-muted">{trait.body}</p>
-            <div className="mt-auto rounded-card bg-chat p-3">
-              <p className="w-fit max-w-full rounded-bubble rounded-tl-sm bg-bubble-in px-3 py-2 text-bubble text-ink shadow-card">
-                {trait.quote}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ul>
+      <Layout />
     </section>
   );
 }
