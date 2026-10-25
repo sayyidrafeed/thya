@@ -154,6 +154,7 @@ Diverifikasi 2026-10-25: `/` dan `/demo` → 200; header CSP, `X-Frame-Options: 
 | Setelah unattended-upgrades memasang kernel | `ssh thya 'test -f /var/run/reboot-required && echo PERLU_REBOOT'`, lalu `ssh thya sudo reboot` di luar jam demo |
 | Update Dokploy | Dashboard → Settings → **Updates**. Jangan update menjelang 10–11 Nov 2026 |
 | Docker | Paket `docker-ce` di-*hold* oleh installer Dokploy; jangan di-upgrade manual tanpa cek kompatibilitas Dokploy |
+| Bulanan: disk | `ssh thya 'df -h / && sudo docker system df'`. Setiap deploy memindahkan tag `:main` dan meninggalkan image lama `<none>`, tapi layer-nya dipakai bersama, jadi pertambahannya kecil (2026-10-25: yang bisa dihapus 253 MB, disk kosong 45 GB). Kalau sisa disk di bawah 10 GB: `ssh thya 'sudo docker image prune -f && sudo apt-get clean'` |
 | Cek ban fail2ban | `ssh thya sudo fail2ban-client status sshd`. Membuka ban: `sudo fail2ban-client set sshd unbanip <IP>` |
 
 ### Memulihkan akses dashboard
@@ -205,5 +206,4 @@ Per 2026-10-25:
 - [x] CI/CD GitHub Actions → GHCR → webhook Dokploy, diuji ujung ke ujung; `https://thya-api.sayyidrafee.com/health` → `{"ok":true}`
 - [ ] Aktifkan 2FA Dokploy (belum dikonfirmasi)
 - [x] Landing `thya.veterantech.id` di Dokploy VPS ini, redeploy otomatis lewat webhook
-- [ ] Aktifkan pembersihan image Docker harian di Dokploy (disk 12 GB terpakai per 2026-10-25; setiap deploy menambah image lama)
 - [ ] Catat batas bandwidth paket dari tab Usage
