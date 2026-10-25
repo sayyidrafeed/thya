@@ -67,9 +67,9 @@ export function ProblemShop() {
   const active = shop.tasks[activeIndex] ?? shop.tasks[0];
 
   return (
-    <div className="flex flex-col gap-6 rounded-panel border border-line bg-surface-raised p-5 shadow-card md:p-8">
+    <div className="flex h-full flex-col gap-6 rounded-panel border border-line bg-surface-raised p-5 shadow-card md:p-8 lg:p-6">
       <p className="font-mono text-label text-ink-muted uppercase">{shop.title}</p>
-      <div className="flex flex-col items-center">
+      <div className="flex flex-1 flex-col items-center justify-center">
         <Node
           icon={
             <Glyph>
@@ -80,16 +80,16 @@ export function ProblemShop() {
           role={shop.owner.role}
         />
         <span aria-hidden="true" className="h-6 border-l border-line-strong" />
-        <ul className="relative grid w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 md:gap-4 md:pt-6">
+        <ul className="relative grid w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 md:gap-4 md:pt-6 lg:grid-cols-1 lg:gap-3 lg:pt-0">
           <span
             aria-hidden="true"
-            className="absolute inset-x-[12.5%] top-0 hidden border-t border-line-strong md:block"
+            className="absolute inset-x-[12.5%] top-0 hidden border-t border-line-strong md:block lg:hidden"
           />
           {shop.tasks.map((task, index) => (
             <li key={task.id} className="relative flex justify-center">
               <span
                 aria-hidden="true"
-                className="absolute -top-6 left-1/2 hidden h-6 border-l border-line-strong md:block"
+                className="absolute -top-6 left-1/2 hidden h-6 border-l border-line-strong md:block lg:hidden"
               />
               <Node
                 icon={taskIcons[task.id]}

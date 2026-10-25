@@ -46,7 +46,7 @@ function SourceWires() {
   const last = rowY.at(-1) ?? 100;
 
   return (
-    <div aria-hidden="true" className="relative hidden md:block">
+    <div aria-hidden="true" className="relative hidden md:block lg:hidden">
       <svg className="absolute inset-0 size-full overflow-visible">
         {rowY.map((y, index) => (
           <Wire key={y} from={["0%", `${y}%`]} to={[`${busX}%`, `${y}%`]} delay={index * 0.25} />
@@ -80,9 +80,9 @@ function Ledger() {
 // Where a food shop's numbers live today, wired into one ledger Thya reads from.
 export function ProblemSources() {
   return (
-    <div className="flex flex-col gap-6 rounded-panel border border-line bg-surface-raised p-5 shadow-card md:p-8">
+    <div className="flex h-full flex-col gap-6 rounded-panel border border-line bg-surface-raised p-5 shadow-card md:p-8 lg:p-6">
       <p className="font-mono text-label text-ink-muted uppercase">{sources.title}</p>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-[auto_minmax(0,1fr)_14rem] md:gap-0 md:px-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[auto_minmax(0,1fr)_14rem] md:gap-0 md:px-6 lg:grid-cols-1 lg:gap-6 lg:px-0">
         <ul className="flex flex-wrap gap-2 md:flex-col md:flex-nowrap">
           {pills.map((pill) => (
             <li

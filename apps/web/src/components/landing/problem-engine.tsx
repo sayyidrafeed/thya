@@ -1,4 +1,4 @@
-import { BookOpen, Calculator, MessageCircle, ShieldCheck } from "lucide-react";
+import { BookOpen, Calculator, Languages, MessageCircle, ShieldCheck } from "lucide-react";
 
 import { ThyaMark } from "@/components/ui/thya-mark";
 import { engine } from "@/lib/landing/problem";
@@ -10,10 +10,12 @@ const rowIcons = {
   checked: ShieldCheck,
 } as const;
 
+const sideIcons = { trust: ShieldCheck, learn: Languages } as const;
+
 // The brand panel with Thya's engine card in the middle, like nalarx's core engine.
 export function ProblemEngine() {
   return (
-    <div className="flex flex-col items-center gap-6 rounded-panel bg-linear-to-br from-brand-deep via-brand to-brand-leaf px-4 py-12 md:py-20">
+    <div className="flex h-full flex-col items-center justify-center gap-6 rounded-panel bg-linear-to-br from-brand-deep via-brand to-brand-leaf px-4 py-12 md:py-20 lg:py-12">
       <div className="w-full max-w-sm overflow-hidden rounded-card bg-ink text-surface shadow-phone">
         <div className="flex items-center justify-between gap-3 border-b border-surface/10 px-4 py-3">
           <span className="flex items-center gap-2 text-body font-semibold">
@@ -38,6 +40,21 @@ export function ProblemEngine() {
           })}
         </ul>
       </div>
+      <ul className="flex flex-wrap justify-center gap-2">
+        {engine.sides.map((side) => {
+          const Icon = sideIcons[side.id];
+
+          return (
+            <li
+              key={side.id}
+              className="flex items-center gap-2 rounded-control bg-surface/12 px-3 py-1.5 text-label text-on-brand"
+            >
+              <Icon aria-hidden="true" className="size-3.5" />
+              {side.lines.join(" · ")}
+            </li>
+          );
+        })}
+      </ul>
       <p className="max-w-xs text-center text-caption text-pretty text-on-brand/85">
         {engine.caption}
       </p>

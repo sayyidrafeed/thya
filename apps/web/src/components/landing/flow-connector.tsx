@@ -1,7 +1,6 @@
 "use client";
 
 import { useReducedMotion } from "motion/react";
-import type { ReactNode } from "react";
 
 type Point = [x: string, y: string];
 
@@ -37,28 +36,16 @@ export function Wire({ from, to, delay = 0 }: { from: Point; to: Point; delay?: 
   );
 }
 
-// The vertical wire between two diagram panels, with optional notes on either side.
-export function PanelConnector({
-  left,
-  right,
-  delay = 0,
-}: {
-  left?: ReactNode;
-  right?: ReactNode;
-  delay?: number;
-}) {
+// The wire between two diagram panels: down when they stack, across when they sit side by side (lg).
+export function PanelConnector({ delay = 0 }: { delay?: number }) {
   return (
-    <div
-      aria-hidden="true"
-      className="grid h-20 grid-cols-[minmax(0,1fr)_3rem_minmax(0,1fr)] items-center gap-3 md:h-24"
-    >
-      <div className="flex justify-end">{left}</div>
-      <div className="relative h-full">
-        <svg className="absolute inset-0 size-full overflow-visible">
-          <Wire from={["50%", "0%"]} to={["50%", "100%"]} delay={delay} />
-        </svg>
-      </div>
-      <div className="flex justify-start">{right}</div>
+    <div aria-hidden="true" className="relative h-16 lg:h-auto">
+      <svg className="absolute inset-0 size-full overflow-visible lg:hidden">
+        <Wire from={["50%", "0%"]} to={["50%", "100%"]} delay={delay} />
+      </svg>
+      <svg className="absolute inset-0 hidden size-full overflow-visible lg:block">
+        <Wire from={["0%", "50%"]} to={["100%", "50%"]} delay={delay} />
+      </svg>
     </div>
   );
 }
