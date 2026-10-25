@@ -27,16 +27,18 @@ thya/
 ## Status implementasi (2026-10-25)
 
 Sudah ada di `apps/api`:
-- `POST /demo/chat`: body `{ messages: UIMessage[] }` dari `useChat` (`DefaultChatTransport`), balasan berupa UI message stream AI SDK v7. Hanya 20 pesan terakhir yang dikirim ke LLM. Pesan `system` dari client ditolak. Ukuran body maksimal 256 KB.
+- `POST /demo/chat`: body `{ messages: UIMessage[] }` dari `useChat` (`DefaultChatTransport`), balasan berupa UI message stream AI SDK v7. Sejak 2026-10-25 (Q2) giliran diselesaikan dan dicek angkanya dulu, lalu dikirim sekaligus: bagian tool (output berstatus `ok`/`error`) diikuti satu teks, tanpa streaming per token. Hanya 20 pesan terakhir yang dikirim ke LLM. Pesan `system` dari client ditolak. Ukuran body maksimal 256 KB.
 - `GET /health`.
 - CORS manual (tanpa `@elysiajs/cors`): origin diambil dari env `WEB_ORIGINS` (dipisah koma), method `GET, POST, OPTIONS`, header `content-type`.
-- Agent: `streamText` + 4 tool + `stopWhen: isStepCount(5)`. Tool: `queryMetric` (satu angka: omzet, modal bahan, laba kotor, margin, jumlah terjual, atau "untung"; plus perbandingan periode sebelumnya, tafsiran istilah, dan penjelasan dari `src/semantic/`), `explainConcept` (penjelasan istilah dengan contoh angka user), `getTopMenuItems` (menu terlaris atau paling sepi), `getDailySales` (rincian harian, maksimal 31 hari). Input tool divalidasi Zod. Aturan periode ada di `src/sales/report.ts`: custom tanpa `endDate` atau yang melewati hari ini dipotong sampai hari ini, sedangkan custom yang mulai di masa depan atau sebelum data tersedia ditolak. Penolakan memakai `SalesQueryError` dan dikembalikan ke model supaya model bisa menjelaskan atau memperbaiki panggilannya. Pesan error jenis ini juga diteruskan apa adanya ke stream UI; error lain disamarkan.
+- Agent: `runTurn` (`src/agent/run-turn.ts`, `generateText`) + 4 tool + `stopWhen: isStepCount(5)`, budget `queryMetric` 4 putaran, timeout 40 detik per giliran, dan cek angka pasca-output (`postcheck.ts`, perilaku gagal Q2). Rincian di `docs/engine-plan.md` §6.1. Tool: `queryMetric` (satu angka: omzet, modal bahan, laba kotor, margin, jumlah terjual, atau "untung"; plus perbandingan periode sebelumnya, tafsiran istilah, dan penjelasan dari `src/semantic/`), `explainConcept` (penjelasan istilah dengan contoh angka user), `getTopMenuItems` (menu terlaris atau paling sepi), `getDailySales` (rincian harian, maksimal 31 hari). Input tool divalidasi Zod. Aturan periode ada di `src/sales/report.ts`: custom tanpa `endDate` atau yang melewati hari ini dipotong sampai hari ini, sedangkan custom yang mulai di masa depan atau sebelum data tersedia ditolak. Penolakan memakai `SalesQueryError`, yang diubah tool menjadi hasil `{ status: "error", message }` supaya model bisa menjelaskan atau memperbaiki panggilannya. Error lain ke UI disamarkan.
 - Jawaban agent memakai format WhatsApp (`*tebal*`, daftar pakai `-`). Web perlu merender format itu atau menampilkannya apa adanya.
 - Env dibaca dari `.env` di root repo (`bun --env-file=../../.env`). Server menolak start kalau `NETRA_API_KEY` kosong.
 
+- **Postgres + Drizzle (2026-10-25).** Schema di `src/db/schema.ts`, migrasi di `apps/api/drizzle/`, dijalankan saat server start (`src/db/migrate.ts`, advisory lock). Server butuh `DATABASE_URL`. Demo "Kopi Senja" (11 menu, kedai kopi di Yogyakarta) di-seed ke Postgres per jam dari 120 hari lalu sampai 30 hari ke depan (`src/sales/repository.ts`, generator tetap `src/sales/demo-shop.ts`); loader hanya menghitung jam yang sudah lewat, jadi "hari ini" bergerak tanpa cron. Setiap giliran demo tercatat di `agent_turns` + `agent_steps`, dengan header `x-trace-id`. Rincian di `docs/engine-plan.md` §6.1.
+- **Syarat deploy:** service Postgres di Dokploy dan env `DATABASE_URL` di `thya-api` (sudah ada sejak 2026-10-25). Tanpa itu API gagal start.
+
 Ditunda:
-- **DB/Drizzle dan pg-boss.** Demo memakai data seed statis "Kopi Senja" (kedai kopi di Yogyakarta, 11 menu, 120 hari terakhir) di `src/sales/demo-shop.ts`. Angkanya deterministik per tanggal: tanggal yang sama selalu menghasilkan angka yang sama. Ada pola akhir pekan, tanggal gajian, dan tren Matcha Latte yang naik. Penjualan hari ini hanya dihitung sampai jam sekarang (buka 07.00–22.00 WIB). Fungsi hitung menerima data sebagai argumen, jadi nanti cukup mengganti sumbernya ke Postgres.
-- Webhook WhatsApp, riwayat chat di DB, rekap terjadwal (`worker.ts` masih stub).
+- pg-boss, webhook WhatsApp, riwayat chat WhatsApp yang dipakai agent, rekap terjadwal (`worker.ts` masih stub).
 - Rate limit untuk `/demo/chat`. Endpoint ini publik dan setiap request memakai kuota LLM, jadi perlu dipasang sebelum tautan prototype disebar luas.
 
 Tidak ada `packages/*` dulu.
@@ -137,7 +139,7 @@ Server dan worker memakai image Docker yang sama dengan command berbeda.
 
 ## Data
 
-Satu Postgres dengan pgvector, diakses lewat Drizzle. Tabel awal (usulan): `businesses`, `users` (nomor WhatsApp), `messages`, `transactions`, `schedules`, `documents` + embedding (kalau RAG dibutuhkan).
+Satu Postgres dengan pgvector, diakses lewat Drizzle (`drizzle-orm` 0.45.4, `postgres` 3.4.9, `drizzle-kit` 0.31.11). Tabel (2026-10-25, `src/db/schema.ts`): `businesses` (nomor WhatsApp di sini), `menu_items`, `menu_costs` (bertanggal), `transactions`, `inbound_messages`, `messages`, `conversation_summaries`, `concept_events`, `drafts`, `agent_turns`, `agent_steps`, `outbound_messages`, `schedules`, `attachments`, `sheet_connections`, `customers`, `campaigns`, `campaign_recipients`. Tabel `documents` + embedding belum dibuat; baru kalau RAG dibutuhkan.
 
 ## Hosting
 
