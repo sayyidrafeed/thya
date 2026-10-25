@@ -10,7 +10,7 @@ export const demoBusiness = {
 
 type DemoMenuItem = MenuItem & { baseDailyQuantity: number };
 
-const demoMenu: DemoMenuItem[] = [
+export const demoMenu: DemoMenuItem[] = [
   {
     id: "es-kopi-susu-aren",
     name: "Es Kopi Susu Gula Aren",
@@ -169,9 +169,48 @@ export function buildDemoSales(now: Date): SalesDataset {
     for (const item of demoMenu) {
       const full = fullDayQuantity(date, item);
       const quantity = date === today ? Math.floor(full * openShare) : full;
-      records.push({ date, itemId: item.id, quantity });
+      records.push({
+        date,
+        itemId: item.id,
+        quantity,
+        unitPrice: item.price,
+        unitCost: item.cost,
+      });
     }
   }
 
   return { menu: demoMenu, records, today, dataStart, asOf: now };
 }
+
+export type DemoHourlySale = { date: string; itemId: string; soldAt: Date; quantity: number };
+
+// The seed for Postgres: each full day split evenly over the opening hours, stamped at the end of
+// the hour, so a loader cut at "now" reproduces the partial day buildDemoSales computes.
+export function demoHourlySales(from: string, to: string): DemoHourlySale[] {
+  const { openHour, closeHour } = demoBusiness;
+  const hours = closeHour - openHour;
+  const sales: DemoHourlySale[] = [];
+
+  for (let date = from; date <= to; date = addDays(date, 1)) {
+    for (const item of demoMenu) {
+      const full = fullDayQuantity(date, item);
+
+      for (let slot = 0; slot < hours; slot++) {
+        const quantity = Math.floor(full / hours) + (slot < full % hours ? 1 : 0);
+        const endHourUtc = openHour + slot + 1 - 7;
+
+        if (quantity > 0)
+          sales.push({
+            date,
+            itemId: item.id,
+            soldAt: new Date(Date.parse(`${date}T00:00:00Z`) + endHourUtc * 3_600_000),
+            quantity,
+          });
+      }
+    }
+  }
+
+  return sales;
+}
+
+export const DEMO_HISTORY_DAYS = DATA_DAYS;

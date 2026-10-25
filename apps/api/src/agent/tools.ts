@@ -5,8 +5,7 @@ import { formatRupiah } from "../sales/format";
 import {
   dailySales,
   dayCount,
-  formatDateId,
-  jakartaTime,
+  describeRange,
   MENU_SORT_KEYS,
   PERIODS,
   previousRange,
@@ -104,26 +103,42 @@ export const topMenuItemsInputSchema = z.object({
 
 export const dailySalesInputSchema = z.object(periodFields);
 
-function describeRange(range: DateRange, dataset: SalesDataset) {
-  const label =
-    range.start === range.end
-      ? formatDateId(range.start)
-      : `${formatDateId(range.start)} s.d. ${formatDateId(range.end)}`;
+export const SALES_TOOL_NAMES = [
+  "queryMetric",
+  "explainConcept",
+  "getTopMenuItems",
+  "getDailySales",
+] as const;
 
-  const includesToday = range.end === dataset.today;
+export type SalesToolName = (typeof SALES_TOOL_NAMES)[number];
 
-  return {
-    ...range,
-    label,
-    days: dayCount(range),
-    ...(includesToday && { dataUntil: `hari ini pukul ${jakartaTime(dataset.asOf)} WIB` }),
-  };
-}
+// Every tool answers with a status instead of throwing, so the model can explain a refusal.
+export type ToolResult<T> = ({ status: "ok" } & T) | { status: "error"; message: string };
 
-// `history` holds what this business already saw; the tools append to it as they explain.
-export function createSalesTools(dataset: SalesDataset, history: ConceptEvent[]) {
+export type ToolGate = { exhausted: (name: SalesToolName) => boolean };
+
+const BUDGET_SPENT =
+  "Batas ambil data untuk pesan ini sudah habis. Susun jawaban sekarang dari hasil yang sudah ada.";
+
+// `events` holds what this business already saw; the tools append to it as they explain.
+export function createSalesTools(
+  dataset: SalesDataset,
+  events: ConceptEvent[],
+  gate: ToolGate = { exhausted: () => false },
+) {
   const { menu, records, today, dataStart } = dataset;
-  const events = [...history];
+
+  function run<T extends object>(name: SalesToolName, compute: () => T): ToolResult<T> {
+    if (gate.exhausted(name)) return { status: "error", message: BUDGET_SPENT };
+
+    try {
+      return { status: "ok", ...compute() };
+    } catch (error) {
+      if (error instanceof SalesQueryError) return { status: "error", message: error.message };
+
+      throw error;
+    }
+  }
 
   function comparableRange(range: DateRange): DateRange | null {
     const previous = previousRange(range);
@@ -164,31 +179,40 @@ export function createSalesTools(dataset: SalesDataset, history: ConceptEvent[])
         "Satu angka usaha untuk satu periode, plus perbandingan dengan periode sebelumnya yang sama panjang. " +
         "Hasilnya membawa interpretedAs dan explanation yang harus disampaikan ke user kalau tidak null.",
       inputSchema: queryMetricInputSchema,
-      execute: async ({ metric: requested, userTerm, ...periodInput }) => {
-        const range = resolvePeriod(periodInput, today, dataStart);
-        const previous = comparableRange(range);
-        const result = computeMetric({ requested, menu, records, range, previousRange: previous });
-        const metric = resolveMetric(requested);
-        const explanation = pickExplanation(result, exposureLevel(events, metric));
-        events.push(...queryMetricEvents(metric, explanation.level, userTerm));
+      execute: async ({ metric: requested, userTerm, ...periodInput }) =>
+        run("queryMetric", () => {
+          const range = resolvePeriod(periodInput, today, dataStart);
+          const previous = comparableRange(range);
 
-        return {
-          metric,
-          label: CONCEPTS[metric].label,
-          value: result.status === "ok" ? result.value : null,
-          range: describeRange(range, dataset),
-          previousPeriod:
-            result.status === "ok" && previous !== null
-              ? {
-                  label: describeRange(previous, dataset).label,
-                  value: result.previousValue,
-                  change: result.change,
-                }
-              : null,
-          interpretedAs: interpretation(userTerm, metric),
-          explanation,
-        };
-      },
+          const result = computeMetric({
+            requested,
+            menu,
+            records,
+            range,
+            previousRange: previous,
+          });
+
+          const metric = resolveMetric(requested);
+          const explanation = pickExplanation(result, exposureLevel(events, metric));
+          events.push(...queryMetricEvents(metric, explanation.level, userTerm));
+
+          return {
+            metric,
+            label: CONCEPTS[metric].label,
+            value: result.status === "ok" ? result.value : null,
+            range: describeRange(range, dataset),
+            previousPeriod:
+              result.status === "ok" && previous !== null
+                ? {
+                    label: describeRange(previous, dataset).label,
+                    value: result.previousValue,
+                    change: result.change,
+                  }
+                : null,
+            interpretedAs: interpretation(userTerm, metric),
+            explanation,
+          };
+        }),
     }),
 
     explainConcept: tool({
@@ -196,15 +220,16 @@ export function createSalesTools(dataset: SalesDataset, history: ConceptEvent[])
         "Penjelasan satu istilah usaha dengan bahasa sehari-hari dan contoh angka milik user. " +
         'Panggil kalau user bertanya "apa itu X", "maksudnya?", atau "kok bisa?".',
       inputSchema: explainConceptInputSchema,
-      execute: async ({ concept, depth }) => {
-        events.push(...explainConceptEvents(concept));
+      execute: async ({ concept, depth }) =>
+        run("explainConcept", () => {
+          events.push(...explainConceptEvents(concept));
 
-        return {
-          concept,
-          label: CONCEPTS[concept].label,
-          text: conceptText(concept, depth, conceptExample(concept)),
-        };
-      },
+          return {
+            concept,
+            label: CONCEPTS[concept].label,
+            text: conceptText(concept, depth, conceptExample(concept)),
+          };
+        }),
     }),
 
     getTopMenuItems: tool({
@@ -212,42 +237,44 @@ export function createSalesTools(dataset: SalesDataset, history: ConceptEvent[])
         "Peringkat menu untuk satu periode: menu terlaris atau paling sepi berdasarkan omzet, jumlah terjual, atau laba kotor. " +
         "Termasuk margin kotor per menu dan porsi omzet.",
       inputSchema: topMenuItemsInputSchema,
-      execute: async ({ sortBy, direction, limit, ...periodInput }) => {
-        const range = resolvePeriod(periodInput, today, dataStart);
-        const items = rankMenuItems(records, menu, range, { sortBy, direction, limit });
+      execute: async ({ sortBy, direction, limit, ...periodInput }) =>
+        run("getTopMenuItems", () => {
+          const range = resolvePeriod(periodInput, today, dataStart);
+          const items = rankMenuItems(records, menu, range, { sortBy, direction, limit });
 
-        return {
-          range: describeRange(range, dataset),
-          sortBy,
-          direction,
-          items: items.map((item) => ({
-            ...item,
-            revenue: formatRupiah(item.revenue),
-            grossProfit: formatRupiah(item.grossProfit),
-          })),
-        };
-      },
+          return {
+            range: describeRange(range, dataset),
+            sortBy,
+            direction,
+            items: items.map((item) => ({
+              ...item,
+              revenue: formatRupiah(item.revenue),
+              grossProfit: formatRupiah(item.grossProfit),
+            })),
+          };
+        }),
     }),
 
     getDailySales: tool({
       description: `Omzet dan item terjual per hari (maksimal ${MAX_DAILY_RANGE_DAYS} hari), untuk melihat tren dan hari paling ramai atau sepi.`,
       inputSchema: dailySalesInputSchema,
-      execute: async (input) => {
-        const range = resolvePeriod(input, today, dataStart);
+      execute: async (input) =>
+        run("getDailySales", () => {
+          const range = resolvePeriod(input, today, dataStart);
 
-        if (dayCount(range) > MAX_DAILY_RANGE_DAYS) {
-          throw new SalesQueryError(
-            `Rincian harian maksimal ${MAX_DAILY_RANGE_DAYS} hari. Pakai queryMetric untuk periode panjang.`,
-          );
-        }
+          if (dayCount(range) > MAX_DAILY_RANGE_DAYS) {
+            throw new SalesQueryError(
+              `Rincian harian maksimal ${MAX_DAILY_RANGE_DAYS} hari. Pakai queryMetric untuk periode panjang.`,
+            );
+          }
 
-        const days = dailySales(records, menu, range);
+          const days = dailySales(records, menu, range);
 
-        return {
-          range: describeRange(range, dataset),
-          days: days.map((day) => ({ ...day, revenue: formatRupiah(day.revenue) })),
-        };
-      },
+          return {
+            range: describeRange(range, dataset),
+            days: days.map((day) => ({ ...day, revenue: formatRupiah(day.revenue) })),
+          };
+        }),
     }),
   };
 }

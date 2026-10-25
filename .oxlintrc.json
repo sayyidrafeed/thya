@@ -142,6 +142,92 @@
       "rules": {
         "shadcn/no-restyle": "off"
       }
+    },
+    {
+      "files": ["apps/api/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/modules/*/*"],
+                "message": "Modul lain hanya diimpor lewat index.ts-nya (keputusan Q9c, docs/engine-plan.md \u00a75.1)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "apps/api/src/agent/**",
+        "apps/api/src/channels/**",
+        "apps/api/src/http/**",
+        "apps/api/src/jobs/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/modules/*/*"],
+                "message": "Modul lain hanya diimpor lewat index.ts-nya (keputusan Q9c, docs/engine-plan.md \u00a75.1)."
+              },
+              {
+                "group": ["**/db/*", "**/db"],
+                "allowTypeImports": true,
+                "message": "agent/, channels/, http/, dan jobs/ tidak memakai db/ langsung (hanya tipe Db); koneksi dibuat di server.ts/worker.ts dan query lewat service modul (keputusan Q9c)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/api/src/agent/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/modules/*/*"],
+                "message": "Modul lain hanya diimpor lewat index.ts-nya (keputusan Q9c, docs/engine-plan.md \u00a75.1)."
+              },
+              {
+                "group": ["**/db/*", "**/db"],
+                "message": "agent/ tidak memakai db/; tool memanggil service modul (keputusan Q9c)."
+              },
+              {
+                "group": ["**/channels/*", "**/http/*", "**/jobs/*", "**/llm"],
+                "message": "agent/ tidak tahu channel, HTTP, job, atau provider; semuanya masuk lewat argumen runTurn (engine-plan \u00a75.1)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/api/src/modules/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/modules/*/*"],
+                "message": "Modul lain hanya diimpor lewat index.ts-nya (keputusan Q9c, docs/engine-plan.md \u00a75.1)."
+              },
+              {
+                "regex": "^\\.\\./[^./][^/]*/.+",
+                "message": "Modul lain hanya diimpor lewat index.ts-nya, bukan file di dalamnya (keputusan Q9c)."
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "settings": {

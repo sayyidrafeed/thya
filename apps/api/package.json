@@ -9,16 +9,25 @@
     "build": "bun build src/server.ts src/worker.ts --target bun --outdir dist",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "verify:netra": "bun --env-file=../../.env scripts/verify-netra-tools.ts"
+    "verify:netra": "bun --env-file=../../.env scripts/verify-netra-tools.ts",
+    "eval": "bun --env-file=../../.env eval/run.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "bun --env-file=../../.env scripts/migrate.ts",
+    "db:seed": "bun --env-file=../../.env scripts/seed-demo.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.78",
+    "@resvg/resvg-js": "^2.6.2",
+    "@tanstack/charts": "^1.1.0",
     "ai": "^7.0.153",
+    "drizzle-orm": "0.45.4",
     "elysia": "^1.4.30",
+    "postgres": "3.4.9",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",
+    "drizzle-kit": "0.31.11",
     "typescript": "^7.0.2"
   }
 }

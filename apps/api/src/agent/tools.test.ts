@@ -71,7 +71,9 @@ describe("semantic tools", () => {
   const options = { toolCallId: "test", messages: [], context: {} };
   const weekly = { period: "last_7_days", startDate: null, endDate: null } as const;
 
-  async function settle<T>(result: T | AsyncIterable<T> | PromiseLike<T>): Promise<T> {
+  async function settle<T extends { status: string }>(
+    result: T | AsyncIterable<T> | PromiseLike<T>,
+  ): Promise<T> {
     const value = await result;
 
     if (Symbol.asyncIterator in Object(value))
@@ -81,12 +83,23 @@ describe("semantic tools", () => {
     return value as T;
   }
 
+  async function succeeded<T extends { status: string }>(
+    result: T | AsyncIterable<T> | PromiseLike<T>,
+  ): Promise<Extract<T, { status: "ok" }>> {
+    const value = await settle(result);
+
+    if (value.status !== "ok") throw new Error(`tool failed: ${JSON.stringify(value)}`);
+
+    // SAFETY: status "ok" selects exactly the success branch of ToolResult.
+    return value as Extract<T, { status: "ok" }>;
+  }
+
   test("explains a concept once per conversation, then answers with the number only", async () => {
     const { queryMetric } = createSalesTools(dataset, []);
     const call = { metric: "profit", userTerm: "untung", ...weekly } as const;
 
-    const first = await settle(queryMetric.execute!(call, options));
-    const second = await settle(queryMetric.execute!(call, options));
+    const first = await succeeded(queryMetric.execute!(call, options));
+    const second = await succeeded(queryMetric.execute!(call, options));
 
     expect(first.metric).toBe("gross_profit");
     expect(first.interpretedAs).toStartWith('"untung" Thya hitung sebagai laba kotor');
@@ -99,9 +112,9 @@ describe("semantic tools", () => {
     const { queryMetric, explainConcept } = createSalesTools(dataset, [...seen]);
     const call = { metric: "revenue", userTerm: "omzet", ...weekly } as const;
 
-    expect((await settle(queryMetric.execute!(call, options))).explanation.level).toBe("none");
+    expect((await succeeded(queryMetric.execute!(call, options))).explanation.level).toBe("none");
 
-    const asked = await settle(
+    const asked = await succeeded(
       explainConcept.execute!({ concept: "menu_cost", depth: "detail" }, options),
     );
 
@@ -112,7 +125,7 @@ describe("semantic tools", () => {
   test("net profit returns no number while operating expenses are missing", async () => {
     const { queryMetric } = createSalesTools(dataset, []);
 
-    const result = await settle(
+    const result = await succeeded(
       queryMetric.execute!({ metric: "net_profit", userTerm: "untung bersih", ...weekly }, options),
     );
 
@@ -121,10 +134,41 @@ describe("semantic tools", () => {
 
     const { explainConcept } = createSalesTools(dataset, []);
 
-    const asked = await settle(
+    const asked = await succeeded(
       explainConcept.execute!({ concept: "net_profit", depth: "short" }, options),
     );
 
     expect(asked.text).toEndWith("Datanya belum dicatat Thya, jadi belum bisa dihitung.");
+  });
+
+  test("a refused period comes back as an error status the model can explain", async () => {
+    const { getDailySales } = createSalesTools(dataset, []);
+
+    const result = await settle(
+      getDailySales.execute!({ period: "last_month", startDate: null, endDate: null }, options),
+    );
+
+    const tooLong = await settle(
+      getDailySales.execute!(
+        { period: "custom", startDate: "2026-08-01", endDate: "2026-10-20" },
+        options,
+      ),
+    );
+
+    expect(result.status).toBe("ok");
+    expect(tooLong).toEqual({
+      status: "error",
+      message: "Rincian harian maksimal 31 hari. Pakai queryMetric untuk periode panjang.",
+    });
+  });
+
+  test("a spent round budget answers without running the query", async () => {
+    const { queryMetric } = createSalesTools(dataset, [], { exhausted: () => true });
+
+    const result = await settle(
+      queryMetric.execute!({ metric: "revenue", userTerm: null, ...weekly }, options),
+    );
+
+    expect(result.status).toBe("error");
   });
 });

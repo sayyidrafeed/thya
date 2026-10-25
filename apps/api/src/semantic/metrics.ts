@@ -27,6 +27,8 @@ export type MetricResult =
       value: string;
       previousValue: string | null;
       change: string | null;
+      // Direction of `change` after the same rounding, so "0%" is flat, not up.
+      trend: "up" | "down" | "flat" | null;
       current: SalesSummary;
       previous: SalesSummary | null;
     }
@@ -71,7 +73,7 @@ function formatAmount(metric: ComputableMetric, value: number): string {
 
 // Margin moves in percentage points; everything else in percent of the previous value.
 // Dividing by |previous| keeps the sign right when a loss shrinks.
-function formatChange(metric: ComputableMetric, current: number, previous: number): string {
+function describeChange(metric: ComputableMetric, current: number, previous: number) {
   const delta =
     metric === "gross_margin"
       ? current - previous
@@ -79,10 +81,15 @@ function formatChange(metric: ComputableMetric, current: number, previous: numbe
 
   const rounded = Math.round(delta * 10) / 10;
   const sign = rounded > 0 ? "+" : "";
+  const trend = rounded > 0 ? ("up" as const) : rounded < 0 ? ("down" as const) : ("flat" as const);
 
-  return metric === "gross_margin"
-    ? `${sign}${rounded.toString().replace(".", ",")} poin`
-    : `${sign}${formatPercent(rounded)}`;
+  return {
+    change:
+      metric === "gross_margin"
+        ? `${sign}${rounded.toString().replace(".", ",")} poin`
+        : `${sign}${formatPercent(rounded)}`,
+    trend,
+  };
 }
 
 export function computeMetric(query: MetricQuery): MetricResult {
@@ -111,7 +118,9 @@ export function computeMetric(query: MetricQuery): MetricResult {
     metric,
     value: formatAmount(metric, now),
     previousValue: before === null ? null : formatAmount(metric, before),
-    change: before === null || zeroBase ? null : formatChange(metric, now, before),
+    ...(before === null || zeroBase
+      ? { change: null, trend: null }
+      : describeChange(metric, now, before)),
     current,
     previous,
   };

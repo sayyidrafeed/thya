@@ -16,12 +16,20 @@ const menu: MenuItem[] = [
   { id: "teh", name: "Teh Tarik", category: "non-kopi", price: 14_000, cost: 4_500 },
 ];
 
+function sale(date: string, itemId: string, quantity: number, from: MenuItem[] = menu): SaleRecord {
+  const item = from.find((candidate) => candidate.id === itemId);
+
+  if (!item) throw new Error(`no menu item ${itemId}`);
+
+  return { date, itemId, quantity, unitPrice: item.price, unitCost: item.cost };
+}
+
 const records: SaleRecord[] = [
-  { date: "2026-10-19", itemId: "kopi", quantity: 99 },
-  { date: "2026-10-20", itemId: "kopi", quantity: 10 },
-  { date: "2026-10-20", itemId: "roti", quantity: 4 },
-  { date: "2026-10-21", itemId: "kopi", quantity: 5 },
-  { date: "2026-10-21", itemId: "roti", quantity: 6 },
+  sale("2026-10-19", "kopi", 99),
+  sale("2026-10-20", "kopi", 10),
+  sale("2026-10-20", "roti", 4),
+  sale("2026-10-21", "kopi", 5),
+  sale("2026-10-21", "roti", 6),
 ];
 
 describe("summarizeSales", () => {

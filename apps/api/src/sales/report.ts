@@ -1,4 +1,6 @@
-export type MenuCategory = "kopi" | "non-kopi" | "makanan";
+export const MENU_CATEGORIES = ["kopi", "non-kopi", "makanan"] as const;
+
+export type MenuCategory = (typeof MENU_CATEGORIES)[number];
 
 export type MenuItem = {
   id: string;
@@ -8,10 +10,14 @@ export type MenuItem = {
   cost: number;
 };
 
+// Price and cost per portion as they were on the sale date, so a later price or cost change never
+// rewrites last month's revenue or profit.
 export type SaleRecord = {
   date: string;
   itemId: string;
   quantity: number;
+  unitPrice: number;
+  unitCost: number;
 };
 
 export type DateRange = { start: string; end: string };
@@ -86,6 +92,26 @@ export function formatDateId(date: string): string {
   const [year, month, day] = date.split("-");
 
   return `${Number(day)} ${MONTHS_ID[Number(month) - 1]} ${year}`;
+}
+
+// One owner for period labels, shared by tools, charts and recaps.
+export type DescribedRange = DateRange & { label: string; days: number; dataUntil?: string };
+
+export function describeRange(
+  range: DateRange,
+  { today, asOf }: { today: string; asOf: Date },
+): DescribedRange {
+  const label =
+    range.start === range.end
+      ? formatDateId(range.start)
+      : `${formatDateId(range.start)} s.d. ${formatDateId(range.end)}`;
+
+  return {
+    ...range,
+    label,
+    days: dayCount(range),
+    ...(range.end === today && { dataUntil: `hari ini pukul ${jakartaTime(asOf)} WIB` }),
+  };
 }
 
 function startOfWeek(date: string): string {
@@ -186,9 +212,9 @@ export function summarizeSales(records: SaleRecord[], menu: MenuItem[], range: D
 
   for (const record of records) {
     if (!inRange(record.date, range)) continue;
-    const item = lookup(index, record.itemId);
-    revenue += item.price * record.quantity;
-    cogs += item.cost * record.quantity;
+    lookup(index, record.itemId);
+    revenue += record.unitPrice * record.quantity;
+    cogs += record.unitCost * record.quantity;
     itemsSold += record.quantity;
   }
 
@@ -215,18 +241,23 @@ export function rankMenuItems(
   options: { sortBy: MenuSortKey; direction: "best" | "worst"; limit: number },
 ) {
   const index = menuIndex(menu);
-  const quantities = new Map(menu.map((item) => [item.id, 0]));
+  const totals = new Map(menu.map((item) => [item.id, { quantity: 0, revenue: 0, cogs: 0 }]));
 
   for (const record of records) {
     if (!inRange(record.date, range)) continue;
     lookup(index, record.itemId);
-    quantities.set(record.itemId, (quantities.get(record.itemId) ?? 0) + record.quantity);
+
+    const total = totals.get(record.itemId);
+
+    if (!total) continue;
+    total.quantity += record.quantity;
+    total.revenue += record.unitPrice * record.quantity;
+    total.cogs += record.unitCost * record.quantity;
   }
 
   const rows = menu.map((item) => {
-    const quantity = quantities.get(item.id) ?? 0;
-    const revenue = item.price * quantity;
-    const grossProfit = (item.price - item.cost) * quantity;
+    const { quantity, revenue, cogs } = totals.get(item.id) ?? { quantity: 0, revenue: 0, cogs: 0 };
+    const grossProfit = revenue - cogs;
 
     return {
       name: item.name,
@@ -263,7 +294,8 @@ export function dailySales(records: SaleRecord[], menu: MenuItem[], range: DateR
     const day = days.get(record.date);
 
     if (!day) continue;
-    day.revenue += lookup(index, record.itemId).price * record.quantity;
+    lookup(index, record.itemId);
+    day.revenue += record.unitPrice * record.quantity;
     day.itemsSold += record.quantity;
   }
 

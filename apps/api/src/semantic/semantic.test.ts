@@ -11,11 +11,19 @@ const menu: MenuItem[] = [
   { id: "croissant", name: "Croissant", category: "makanan", price: 20_000, cost: 18_000 },
 ];
 
+function sale(date: string, itemId: string, quantity: number, from: MenuItem[] = menu): SaleRecord {
+  const item = from.find((candidate) => candidate.id === itemId);
+
+  if (!item) throw new Error(`no menu item ${itemId}`);
+
+  return { date, itemId, quantity, unitPrice: item.price, unitCost: item.cost };
+}
+
 // Last week only coffee; this week half the cups became low-margin croissants.
 const records: SaleRecord[] = [
-  { date: "2026-10-12", itemId: "kopi", quantity: 100 },
-  { date: "2026-10-19", itemId: "kopi", quantity: 60 },
-  { date: "2026-10-19", itemId: "croissant", quantity: 60 },
+  sale("2026-10-12", "kopi", 100),
+  sale("2026-10-19", "kopi", 60),
+  sale("2026-10-19", "croissant", 60),
 ];
 
 const thisWeek = { start: "2026-10-19", end: "2026-10-25" };
@@ -95,16 +103,13 @@ describe("computeMetric", () => {
   });
 
   test("tiny changes round to 0% without a sign, and a shrinking loss reads as an increase", () => {
-    const tiny = [
-      { date: "2026-10-12", itemId: "kopi", quantity: 10_000 },
-      { date: "2026-10-19", itemId: "kopi", quantity: 10_001 },
-    ];
+    const tiny = [sale("2026-10-12", "kopi", 10_000), sale("2026-10-19", "kopi", 10_001)];
 
     const lossMenu: MenuItem[] = [{ ...menu[0]!, cost: 20_000 }];
 
     const losses = [
-      { date: "2026-10-12", itemId: "kopi", quantity: 2 },
-      { date: "2026-10-19", itemId: "kopi", quantity: 1 },
+      sale("2026-10-12", "kopi", 2, lossMenu),
+      sale("2026-10-19", "kopi", 1, lossMenu),
     ];
 
     const query = { range: thisWeek, previousRange: lastWeek };

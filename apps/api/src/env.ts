@@ -7,6 +7,7 @@ const envSchema = z.object({
   NETRA_API_KEY: z.string({ error: MISSING_KEY }).min(1, MISSING_KEY),
   NETRA_BASE_URL: z.url().default("https://api.netraruntime.com/v1"),
   NETRA_MODEL: z.string().min(1).default("deepseek/deepseek-v4.1-flash"),
+  DATABASE_URL: z.url({ error: "DATABASE_URL belum diisi. Lihat .env.example." }),
   PORT: z.coerce.number().int().positive().default(3001),
   WEB_ORIGINS: z
     .string()

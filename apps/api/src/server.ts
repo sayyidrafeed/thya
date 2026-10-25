@@ -1,11 +1,25 @@
-import { safeValidateUIMessages } from "ai";
+import { createUIMessageStreamResponse, safeValidateUIMessages } from "ai";
 import { Elysia } from "elysia";
 import { z } from "zod";
-import { streamDemoChat } from "./agent";
+import { createDb } from "./db/client";
+import { runMigrations } from "./db/migrate";
 import { env } from "./env";
-import { SalesQueryError } from "./sales/report";
+import { demoChatStream } from "./http/demo";
+import { ensureDemoBusiness } from "./modules/business";
+import { hasSales, seedDemoSales } from "./sales/repository";
+import { newTraceId } from "./trace";
 
 const allowedOrigins = new Set(env.WEB_ORIGINS);
+const db = createDb(env.DATABASE_URL);
+
+await runMigrations(env.DATABASE_URL);
+
+const demo = await ensureDemoBusiness(db);
+
+// First boot waits for the seed once, so the demo never answers "Rp0" from a half-filled history.
+const firstBoot = !(await hasSales(db, demo.id));
+
+if (firstBoot) await seedDemoSales(db, demo.id, new Date());
 
 const demoChatBody = z.object({
   messages: z.array(z.unknown()).min(1).max(100),
@@ -18,6 +32,7 @@ export const app = new Elysia({ serve: { maxRequestBodySize: 256 * 1024 } })
     if (origin && allowedOrigins.has(origin)) {
       set.headers["access-control-allow-origin"] = origin;
       set.headers.vary = "Origin";
+      set.headers["access-control-expose-headers"] = "x-trace-id";
     }
 
     if (request.method === "OPTIONS") {
@@ -41,14 +56,11 @@ export const app = new Elysia({ serve: { maxRequestBodySize: 256 * 1024 } })
         return status(400, { error: "Pesan system tidak boleh dikirim dari client." });
       }
 
-      const result = await streamDemoChat(validated.data, request.signal);
+      const traceId = newTraceId();
 
-      return result.toUIMessageStreamResponse({
-        sendReasoning: false,
-        onError: (error) =>
-          error instanceof SalesQueryError
-            ? error.message
-            : "Maaf Kak, Thya lagi gangguan. Coba kirim ulang sebentar lagi ya.",
+      return createUIMessageStreamResponse({
+        headers: { "x-trace-id": traceId },
+        stream: demoChatStream(db, validated.data, traceId, request.signal),
       });
     },
     { body: demoChatBody },
@@ -56,3 +68,15 @@ export const app = new Elysia({ serve: { maxRequestBodySize: 256 * 1024 } })
   .listen(env.PORT);
 
 console.log(`Thya API jalan di http://localhost:${app.server?.port}`);
+
+// After listen, so the health check passes while it runs. The demo's rows reach 30 days past each
+// deploy, which keeps "today" moving without a cron; the insert is idempotent.
+async function topUpDemoSales() {
+  try {
+    await seedDemoSales(db, demo.id, new Date());
+  } catch (error) {
+    console.error("demo seed failed:", error instanceof Error ? error.message : error);
+  }
+}
+
+if (!firstBoot) void topUpDemoSales();
