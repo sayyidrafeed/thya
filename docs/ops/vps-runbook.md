@@ -108,15 +108,37 @@ rm /tmp/thya-backup.sql.gz
 
 Format arsip dan perintah di atas diverifikasi lewat uji restore; lihat [Status](#status-dan-yang-masih-menunggu).
 
-## Aplikasi `apps/api`
+## Aplikasi dan CI/CD
 
-Rencana konfigurasi di Dokploy (project `thya`, service Application):
+Image dibangun di GitHub Actions, bukan di VPS. Dengan begitu RAM VPS tidak terpakai untuk build, dan yang masuk ke VPS hanya hasil pull image (ingress, tidak memakan kuota egress).
 
-- Sumber: GitHub `sayyidrafeed/thya` (public), branch `main`.
-- Build: Railpack di root monorepo (Bun workspaces); start `bun --cwd apps/api src/server.ts`. `--env-file=../../.env` di script `start` aman walaupun file itu tidak ada di container (Bun mengabaikan file yang hilang).
-- Env (tab Environment di Dokploy, tidak ada di repo): `NETRA_API_KEY`, `NETRA_BASE_URL`, `NETRA_MODEL`, `PORT=3001`, `WEB_ORIGINS=https://thya.veterantech.id`, lalu `DATABASE_URL` begitu kode DB masuk.
-- Domain: `thya-api.sayyidrafee.com`, container port `3001`, HTTPS Let's Encrypt.
+```
+push ke main → CI (fmt, lint, typecheck, test)
+             → Publish images: build apps/api dan apps/web → ghcr.io/sayyidrafeed/thya-{api,web}:main + :sha-<commit>
+             → POST /api/application.deploy ke Dokploy → Dokploy pull :main dan restart service
+```
+
+- Workflow: `.github/workflows/ci.yml` dan `.github/workflows/publish-images.yml`. Publish hanya berjalan setelah CI sukses pada push ke `main`; pull request tidak pernah sampai ke tahap publish.
+- Dockerfile: `apps/api/Dockerfile` (Bun 1.4.2, user non-root `bun`, `HEALTHCHECK` ke `/health`) dan `apps/web/Dockerfile` (static export → nginx). Keduanya di-build dari root repo.
+- Pengaturan repo GitHub (Settings → Secrets and variables → Actions):
+
+| Nama | Jenis | Isi |
+|---|---|---|
+| `API_PUBLIC_URL` | variable | `https://thya-api.sayyidrafee.com` (build arg `NEXT_PUBLIC_API_URL` untuk web) |
+| `DOKPLOY_URL` | variable | `https://deploy.sayyidrafee.com` |
+| `DOKPLOY_API_APPLICATION_ID` | variable | ID aplikasi `thya-api` di Dokploy (terlihat di URL halaman aplikasi) |
+| `DOKPLOY_WEB_APPLICATION_ID` | variable | ID aplikasi web, kalau landing jalan di VPS ini |
+| `DOKPLOY_API_KEY` | **secret** | API key Dokploy (Profile → API/CLI). Diisi Rafee sendiri. Key ini setara akses admin Dokploy |
+
+  Kalau `DOKPLOY_*` belum diisi, workflow tetap mem-publish image dan melewati langkah deploy.
+
+### Aplikasi `thya-api` di Dokploy
+
+- Project `thya` → Application `thya-api`, Provider **Docker**: image `ghcr.io/sayyidrafeed/thya-api:main`, Registry URL `ghcr.io`. Kalau package GHCR dibuat public, username dan password dikosongkan. Kalau private, isi username GitHub dan PAT (classic) dengan scope `read:packages` saja.
+- Env (tab Environment, tidak ada di repo maupun image): `NETRA_API_KEY`, `NETRA_BASE_URL=https://api.netraruntime.com/v1`, `NETRA_MODEL=deepseek/deepseek-v4.1-flash`, `PORT=3001`, `WEB_ORIGINS=https://thya.veterantech.id`, lalu `DATABASE_URL` begitu kode DB masuk.
+- Domain: `thya-api.sayyidrafee.com`, path `/`, container port `3001`, HTTPS Let's Encrypt.
 - Health check: `GET /health` → `{"ok":true}`.
+- Rollback: ubah image ke `ghcr.io/sayyidrafeed/thya-api:sha-<commit-sebelumnya>`, lalu Deploy. Kembalikan ke `:main` setelah perbaikan di-push.
 
 ## Operasi rutin
 
@@ -162,7 +184,7 @@ Urutan yang dipakai 2026-10-25, untuk mengulang di VPS baru:
 7. Baca skrip https://dokploy.com/install.sh, lalu jalankan dengan `DOCKER_SWARM_INIT_ARGS="--default-addr-pool 10.200.0.0/16 --default-addr-pool-mask-length 24"`.
 8. Buat admin lewat tunnel `ssh -N -L 3000:localhost:3000 thya`, aktifkan 2FA, set Server Domain + Let's Encrypt, lalu `--publish-rm` port 3000.
 9. Postgres pgvector, destination R2, jadwal backup, uji restore.
-10. Aplikasi `apps/api` + domain.
+10. Variable dan secret repo GitHub, aplikasi Dokploy dari image GHCR, lalu domain.
 
 ## Status dan yang masih menunggu
 
@@ -173,6 +195,7 @@ Per 2026-10-25:
 - [ ] Postgres `thya-db` (ditunda oleh Rafee, 2026-10-25; `apps/api` belum memakai DB)
 - [ ] Destination R2 + jadwal backup (ditunda oleh Rafee untuk menghemat egress, 2026-10-25). Wajib aktif sebelum ada data UMKM sungguhan di DB
 - [ ] Uji backup manual dan uji restore
-- [ ] Repo `sayyidrafeed/thya` di GitHub → deploy `apps/api` → `/health` lewat HTTPS
+- [x] Repo `sayyidrafeed/thya` (public) di GitHub
+- [ ] CI/CD GitHub Actions → GHCR → Dokploy, lalu `/health` lewat HTTPS
 - [ ] Keputusan tempat landing `thya.veterantech.id` (VPS ini atau tempat lain) + record DNS-nya
 - [ ] Catat batas bandwidth paket dari tab Usage
