@@ -6,9 +6,13 @@ import { useRef } from "react";
 import { SectionHeading } from "@/components/landing/section-heading";
 import { StepPanel } from "@/components/landing/step-panel";
 import { useActiveStep } from "@/hooks/use-active-step";
-import { howItWorksSteps } from "@/lib/landing/how-it-works";
+import { howItWorksHeading, howItWorksSteps } from "@/lib/landing/how-it-works";
+import { showcaseScenes } from "@/lib/landing/showcase-scenes";
 
 const ease = [0.22, 1, 0.36, 1] as const;
+
+const isNext = (sceneId: string) =>
+  showcaseScenes.find((scene) => scene.id === sceneId)?.group === "next";
 
 export function HowItWorks() {
   const listRef = useRef<HTMLOListElement>(null);
@@ -24,13 +28,13 @@ export function HowItWorks() {
       <SectionHeading
         align="start"
         eyebrow="How it works"
-        title={<span id="how-it-works-title">One question in, one clear answer out.</span>}
+        title={<span id="how-it-works-title">{howItWorksHeading}</span>}
       />
       <div className="grid gap-16 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <ol ref={listRef} className="flex flex-col gap-16 md:gap-0">
           {howItWorksSteps.map((step, index) => (
             <li
-              key={step.id}
+              key={step.sceneId}
               data-active={index === activeIndex}
               className="flex flex-col gap-8 transition duration-500 ease-out-soft motion-reduce:transition-none md:min-h-[70vh] md:justify-center md:data-[active=false]:opacity-30 md:data-[active=false]:blur-xs"
             >
@@ -38,10 +42,10 @@ export function HowItWorks() {
                 <p className="flex items-center gap-3 font-mono text-label text-ink-muted">
                   <span className="tabular-nums">{String(index + 1).padStart(2, "0")}</span>
                   <span
-                    data-upcoming={step.conversationId === null}
+                    data-upcoming={isNext(step.sceneId)}
                     className="rounded-control bg-surface-muted px-2 py-0.5 text-ink uppercase data-[upcoming=true]:border data-[upcoming=true]:border-dashed data-[upcoming=true]:border-line-strong data-[upcoming=true]:bg-transparent"
                   >
-                    {step.tag}
+                    {isNext(step.sceneId) ? "Coming next" : "Works today"}
                   </span>
                 </p>
                 <h3 className="text-title font-medium text-balance md:text-display">
@@ -59,7 +63,7 @@ export function HowItWorks() {
           <div className="sticky top-[calc(50vh-15rem)]">
             <AnimatePresence mode="popLayout" initial={false}>
               <m.div
-                key={active.id}
+                key={active.sceneId}
                 initial={{ opacity: 0, y: 32, filter: "blur(10px)" }}
                 animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                 exit={{ opacity: 0, y: -32, filter: "blur(10px)" }}

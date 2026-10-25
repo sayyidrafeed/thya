@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, FileSpreadsheet, Link2, Mail } from "lucide-react";
+import { FileSpreadsheet, Link2, Mail } from "lucide-react";
 import { m } from "motion/react";
 import type { ReactNode } from "react";
 
@@ -70,16 +70,6 @@ export function StepBubble({ step }: { step: ChatStep }) {
               ))}
             </tbody>
           </table>
-        </Card>
-      );
-    case "calendar":
-      return (
-        <Card side="thya">
-          <CardHead
-            icon={<CalendarDays className="size-4" />}
-            title={step.title}
-            meta={`${step.when} · Google Calendar`}
-          />
         </Card>
       );
     case "email":

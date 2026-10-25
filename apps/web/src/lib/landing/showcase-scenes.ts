@@ -8,7 +8,6 @@ export type ChatStep =
   | { from: "user" | "thya"; kind: "text"; text: string }
   | { from: "user"; kind: "link"; title: string; url: string }
   | { from: "thya"; kind: "sheet"; title: string; rows: readonly (readonly [string, string])[] }
-  | { from: "thya"; kind: "calendar"; title: string; when: string }
   | { from: "thya"; kind: "email"; subject: string; status: string };
 
 export type Scene = {
@@ -19,16 +18,21 @@ export type Scene = {
   steps: readonly ChatStep[];
 };
 
-const todayScenes: Scene[] = mockupConversations.map((conversation) => ({
-  id: conversation.id,
-  group: "today",
-  label: conversation.label,
-  summary: conversation.summary,
-  steps: [
-    { from: "user", kind: "text", text: conversation.question },
-    { from: "thya", kind: "text", text: conversation.answer },
-  ],
-}));
+// Four use cases in the hero: two that work today, two automations that are coming next.
+const todayIds = new Set(["revenue", "best-sellers"]);
+
+const todayScenes: Scene[] = mockupConversations
+  .filter((conversation) => todayIds.has(conversation.id))
+  .map((conversation) => ({
+    id: conversation.id,
+    group: "today",
+    label: conversation.label,
+    summary: conversation.summary,
+    steps: [
+      { from: "user", kind: "text", text: conversation.question },
+      { from: "thya", kind: "text", text: conversation.answer },
+    ],
+  }));
 
 const nextScenes: Scene[] = [
   {
@@ -56,21 +60,6 @@ const nextScenes: Scene[] = [
     ],
   },
   {
-    id: "calendar",
-    group: "next",
-    label: "Set a reminder",
-    summary: "Ask for a reminder and Thya puts it on Google Calendar.",
-    steps: [
-      { from: "user", kind: "text", text: "Ingetin aku restock gula aren tiap Senin pagi ya." },
-      {
-        from: "thya",
-        kind: "calendar",
-        title: "Restock gula aren",
-        when: "Setiap Senin, 07.00",
-      },
-    ],
-  },
-  {
     id: "email",
     group: "next",
     label: "Email customers",
@@ -79,7 +68,7 @@ const nextScenes: Scene[] = [
       {
         from: "user",
         kind: "text",
-        text: "Kirim promo bundling Es Kopi Susu + Pisang Goreng ke pelanggan.",
+        text: "Kirim promo bundling ke pelanggan, ya.",
       },
       {
         from: "thya",

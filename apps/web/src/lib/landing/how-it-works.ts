@@ -1,51 +1,33 @@
-import type { mockupConversations } from "@/lib/landing/mockup-conversations";
+// How it works details the four hero use cases. Each step plays the matching scene from
+// showcase-scenes.ts; "next" ones are automations that are not built yet and say so.
 
 export type HowItWorksStep = {
-  id: string;
-  tag: string;
+  sceneId: "revenue" | "best-sellers" | "sheets" | "email";
   title: string;
   body: string;
-  conversationId: (typeof mockupConversations)[number]["id"] | null;
-  checking: boolean;
 };
+
+export const howItWorksHeading = "Four things owners ask Thya for.";
 
 export const howItWorksSteps = [
   {
-    id: "ask",
-    tag: "In a chat",
-    title: "Ask the way you'd ask a friend.",
-    body: "Type a normal question in Indonesian, like “omzet kemarin berapa?”. There are no menus to find and no report to set up.",
-    conversationId: "revenue",
-    checking: false,
+    sceneId: "revenue",
+    title: "Ask how yesterday went.",
+    body: "Type a normal question like “omzet kemarin berapa?”. Thya works the figure out from your sales records, compares it with the day before, and says what the term means. If the data isn't there yet, it says so instead of guessing.",
   },
   {
-    id: "check",
-    tag: "From your records",
-    title: "Thya checks the numbers before it answers.",
-    body: "Each figure is worked out with fixed calculations on your sales data. The language model only writes the sentence. If the data isn't there yet, Thya says so instead of guessing.",
-    conversationId: "best-sellers",
-    checking: true,
+    sceneId: "best-sellers",
+    title: "Know what to sell more of.",
+    body: "Ask what sold best this week. Thya lists the top menus with their revenue and margin, then suggests one thing to try, like bundling two best sellers together.",
   },
   {
-    id: "understand",
-    tag: "In plain words",
-    title: "Get the answer, and what it means.",
-    body: "Terms like gross margin come with a one-line meaning, and most answers end with one thing you can try next.",
-    conversationId: "margin",
-    checking: false,
+    sceneId: "sheets",
+    title: "Keep your spreadsheet up to date.",
+    body: "Paste a Google Sheets link and ask Thya to add the latest daily revenue. It writes the rows and shows you exactly what changed.",
   },
   {
-    id: "next",
-    tag: "Coming next",
-    title: "Then, on WhatsApp.",
-    body: "We're building a WhatsApp number, recording sales by chat with a check before anything is saved, and a daily recap. None of these are live yet.",
-    conversationId: null,
-    checking: false,
+    sceneId: "email",
+    title: "Reach your regulars.",
+    body: "Ask Thya to send a promo. It drafts the email around your best sellers and only sends it once you say yes.",
   },
 ] as const satisfies readonly HowItWorksStep[];
-
-export const comingNext = [
-  "A WhatsApp number to chat with Thya",
-  "Recording sales by chat, confirmed before saving",
-  "A daily recap sent at closing time",
-] as const;
