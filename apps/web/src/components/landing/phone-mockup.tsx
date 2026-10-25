@@ -3,6 +3,7 @@
 import { m } from "motion/react";
 
 import { ChatText } from "@/components/chat/chat-text";
+import { ThyaMark } from "@/components/ui/thya-mark";
 import type { MockupConversation } from "@/lib/landing/mockup-conversations";
 
 export function PhoneMockup({ conversation }: { conversation: MockupConversation }) {
@@ -10,11 +11,8 @@ export function PhoneMockup({ conversation }: { conversation: MockupConversation
     <div className="w-full max-w-phone rounded-phone bg-ink p-2 shadow-phone">
       <div className="overflow-hidden rounded-screen bg-chat">
         <div className="flex items-center gap-3 bg-chat-bar px-4 pt-7 pb-3">
-          <span
-            aria-hidden="true"
-            className="grid size-9 place-items-center rounded-full bg-brand text-caption font-semibold text-on-brand"
-          >
-            T
+          <span className="grid size-9 place-items-center rounded-full bg-surface-raised shadow-card">
+            <ThyaMark />
           </span>
           <div className="leading-tight">
             <p className="text-caption font-semibold">Thya</p>

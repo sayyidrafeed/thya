@@ -1,5 +1,6 @@
 "use client";
 
+import { ThyaMark } from "@/components/ui/thya-mark";
 import { useScrolledPast } from "@/hooks/use-scrolled-past";
 
 const links = [
@@ -23,12 +24,7 @@ export function SiteHeader() {
           href="#top"
           className="flex min-h-11 items-center gap-2 rounded-control px-1 text-title font-semibold focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
-          <span
-            aria-hidden="true"
-            className="grid size-7 place-items-center rounded-full bg-brand text-caption text-on-brand"
-          >
-            T
-          </span>
+          <ThyaMark />
           Thya
         </a>
         <ul className="flex items-center gap-1">

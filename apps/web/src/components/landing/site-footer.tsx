@@ -1,4 +1,5 @@
 import { FooterLandscape } from "@/components/landing/footer-landscape";
+import { ThyaMark } from "@/components/ui/thya-mark";
 
 const columns = [
   {
@@ -35,12 +36,7 @@ export function SiteFooter() {
       <div className="mx-auto grid w-full max-w-page gap-10 px-4 pt-16 pb-72 sm:px-6 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))] md:pb-96">
         <div className="flex max-w-xs flex-col gap-3">
           <p className="flex items-center gap-2 text-title font-semibold">
-            <span
-              aria-hidden="true"
-              className="grid size-7 place-items-center rounded-full bg-brand text-caption text-on-brand"
-            >
-              T
-            </span>
+            <ThyaMark size="md" />
             Thya
           </p>
           <p className="text-caption text-pretty text-ink-muted">

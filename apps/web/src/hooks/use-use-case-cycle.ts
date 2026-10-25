@@ -3,7 +3,7 @@
 import { useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 
-const cycleMs = 4200;
+const cycleMs = 3000;
 
 // Walks through the hero use cases until the visitor picks one; reduced motion never auto-advances.
 export function useUseCaseCycle(count: number) {
