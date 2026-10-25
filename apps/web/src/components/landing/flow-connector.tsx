@@ -1,31 +1,50 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+"use client";
 
-// Dashed wire with a travelling dash and a label, horizontal from md up, vertical below.
-export function FlowConnector({ label }: { label: string }) {
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { useReducedMotion } from "motion/react";
+
+function Wire({ vertical, delay }: { vertical: boolean; delay: number }) {
+  const reduceMotion = useReducedMotion() === true;
+  const [x1, y1, x2, y2] = vertical ? ["50%", "0", "50%", "100%"] : ["0", "50%", "100%", "50%"];
+
+  return (
+    <>
+      <line x1={x1} y1={y1} x2={x2} y2={y2} strokeDasharray="4 4" className="stroke-line-strong" />
+      {reduceMotion ? null : (
+        <line
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          pathLength={100}
+          strokeDasharray="22 78"
+          strokeLinecap="round"
+          strokeWidth={2}
+          className="stroke-brand"
+        >
+          <animate
+            attributeName="stroke-dashoffset"
+            from="100"
+            to="0"
+            dur="1.8s"
+            begin={`${delay}s`}
+            repeatCount="indefinite"
+          />
+        </line>
+      )}
+    </>
+  );
+}
+
+// Dashed wire with a travelling pulse and a label; horizontal from md up, vertical below.
+export function FlowConnector({ label, delay = 0 }: { label: string; delay?: number }) {
   return (
     <div aria-hidden="true" className="relative flex h-16 items-center justify-center md:h-auto">
-      <svg
-        className="absolute inset-0 size-full overflow-visible text-line-strong"
-        preserveAspectRatio="none"
-      >
-        <line
-          x1="50%"
-          y1="0"
-          x2="50%"
-          y2="100%"
-          stroke="currentColor"
-          strokeDasharray="4 4"
-          className="motion-safe:animate-dash-flow md:hidden"
-        />
-        <line
-          x1="0"
-          y1="50%"
-          x2="100%"
-          y2="50%"
-          stroke="currentColor"
-          strokeDasharray="4 4"
-          className="hidden motion-safe:animate-dash-flow md:block"
-        />
+      <svg className="absolute inset-0 size-full overflow-visible md:hidden">
+        <Wire vertical delay={delay} />
+      </svg>
+      <svg className="absolute inset-0 hidden size-full overflow-visible md:block">
+        <Wire vertical={false} delay={delay} />
       </svg>
       <span className="relative flex items-center gap-1 rounded-control border border-line bg-surface px-2.5 py-1 font-mono text-label text-ink-muted">
         {label}

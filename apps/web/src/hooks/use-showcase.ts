@@ -10,13 +10,17 @@ export type ThreadEntry = { key: number; scene: number; shown: number; typing: b
 
 const keep = 2;
 
-// Plays the hero scenes as one running chat: each scene's steps arrive on its timeline, then the
-// next scene starts, until the visitor picks one. Reduced motion shows whole scenes and never advances.
+// Rafee's cadence: a new scene every 2.2 s; a longer scene gets just enough time to finish.
+const cycleMs = 2200;
+const afterLastStepMs = 500;
+
+// Plays the hero scenes as one running chat on a 2.2 s cadence. Picking a scene jumps to it and restarts
+// the timer. Reduced motion shows whole scenes and never advances.
 export function useShowcase(scenes: readonly Scene[]) {
   const reduceMotion = useReducedMotion() === true;
   const counter = useRef(0);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [pinned, setPinned] = useState(false);
+  const [round, setRound] = useState(0);
   const [entries, setEntries] = useState<ThreadEntry[]>([]);
 
   useEffect(() => {
@@ -27,16 +31,24 @@ export function useShowcase(scenes: readonly Scene[]) {
     counter.current += 1;
 
     const key = counter.current;
-    const { beats, duration } = sceneTimeline(scene.steps);
+    const { beats } = sceneTimeline(scene.steps);
+    const lastStepAt = beats.at(-1)?.at ?? 0;
 
     const update = (shown: number, typing: boolean) =>
       setEntries((current) => current.map((e) => (e.key === key ? { ...e, shown, typing } : e)));
 
     // Re-running for the same scene (Strict Mode, re-selecting it) replaces the last entry.
+    // Earlier scenes cut short by a click are settled first, so none is left "typing".
+    const settle = (entry: ThreadEntry) => ({
+      ...entry,
+      shown: scenes[entry.scene]?.steps.length ?? entry.shown,
+      typing: false,
+    });
+
     setEntries((current) => [
-      ...(current.at(-1)?.scene === activeIndex ? current.slice(0, -1) : current).slice(
-        -(keep - 1),
-      ),
+      ...(current.at(-1)?.scene === activeIndex ? current.slice(0, -1) : current)
+        .slice(-(keep - 1))
+        .map(settle),
       { key, scene: activeIndex, shown: reduceMotion ? scene.steps.length : 0, typing: false },
     ]);
 
@@ -44,19 +56,20 @@ export function useShowcase(scenes: readonly Scene[]) {
 
     const timers = beats.map((beat) => setTimeout(() => update(beat.shown, beat.typing), beat.at));
 
-    if (!pinned) {
-      timers.push(
-        setTimeout(() => setActiveIndex((index) => (index + 1) % scenes.length), duration),
-      );
-    }
+    timers.push(
+      setTimeout(
+        () => setActiveIndex((index) => (index + 1) % scenes.length),
+        Math.max(cycleMs, lastStepAt + afterLastStepMs),
+      ),
+    );
 
     return () => {
       for (const timer of timers) clearTimeout(timer);
     };
-  }, [activeIndex, pinned, reduceMotion, scenes]);
+  }, [activeIndex, round, reduceMotion, scenes]);
 
   function select(index: number) {
-    setPinned(true);
+    setRound((value) => value + 1);
     setActiveIndex(index);
   }
 

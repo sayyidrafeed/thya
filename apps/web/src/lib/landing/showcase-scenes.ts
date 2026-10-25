@@ -1,8 +1,8 @@
 import { mockupConversations } from "@/lib/landing/mockup-conversations";
 
-// Hero phone scenes. "today" scenes replay real /demo/chat answers. "next" scenes are previews of
-// automations that are not built yet: the UI labels them "Coming next" and the phone shows "Preview".
-// Their only figures are real ones (daily revenue 23–24 Okt from the revenue answer).
+// Hero phone scenes. "today" scenes replay real /demo/chat answers. "next" scenes show automations
+// the API does not run yet (Sheets, email); Rafee chose to show them unlabelled (2026-10-25) and build
+// them before the final. Their only figures are real ones (daily revenue 23–24 Okt).
 
 export type ChatStep =
   | { from: "user" | "thya"; kind: "text"; text: string }

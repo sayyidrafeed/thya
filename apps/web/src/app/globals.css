@@ -113,14 +113,6 @@
 
   /* Motion */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
-  /* Dashes travelling along the problem diagram's connectors. */
-  --animate-dash-flow: dash-flow 1.2s linear infinite;
-
-  @keyframes dash-flow {
-    to {
-      stroke-dashoffset: -16;
-    }
-  }
 }
 
 /* Frosted chrome (navbar, carousel controls). Solid when the visitor asks for less transparency. */

@@ -28,12 +28,6 @@ export function Hero() {
           open a spreadsheet.
         </p>
         <a
-          href="#how-it-works"
-          className="inline-flex min-h-11 items-center rounded-control bg-ink px-6 text-body font-medium text-surface transition-colors hover:bg-brand focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
-        >
-          See how it works
-        </a>
-        <a
           href="https://developerday.id"
           target="_blank"
           rel="noreferrer"

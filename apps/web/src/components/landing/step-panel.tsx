@@ -4,7 +4,7 @@ import { ScenePlayer } from "@/components/chat/scene-player";
 import type { HowItWorksStep } from "@/lib/landing/how-it-works";
 import { showcaseScenes } from "@/lib/landing/showcase-scenes";
 
-// The chat for one use case. Automations that are not built yet carry the same Preview label as the hero.
+// The chat for one use case, replaying while it is on screen.
 export function StepPanel({ step }: { step: HowItWorksStep }) {
   const scene = showcaseScenes.find((item) => item.id === step.sceneId);
 
@@ -16,11 +16,6 @@ export function StepPanel({ step }: { step: HowItWorksStep }) {
         <p className="flex items-center gap-2 font-mono text-label text-ink-muted">
           <span aria-hidden="true" className="size-2 rounded-full bg-brand" />
           thya · your agent
-          {scene.group === "next" ? (
-            <span className="ml-auto rounded-control border border-dashed border-line-strong px-2 py-0.5 uppercase">
-              Preview
-            </span>
-          ) : null}
         </p>
         <ScenePlayer scene={scene} />
       </div>

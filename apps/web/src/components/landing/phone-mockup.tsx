@@ -9,8 +9,8 @@ import { ThyaMark } from "@/components/ui/thya-mark";
 import type { ThreadEntry } from "@/hooks/use-showcase";
 import { showcaseScenes } from "@/lib/landing/showcase-scenes";
 
-// A running thread inside the phone; older scenes scroll out the top. Preview scenes are labelled.
-export function PhoneMockup({ entries, preview }: { entries: ThreadEntry[]; preview: boolean }) {
+// A running thread inside the phone; older scenes scroll out the top.
+export function PhoneMockup({ entries }: { entries: ThreadEntry[] }) {
   return (
     <DeviceFrame>
       <div className="flex items-center gap-3 border-b border-line bg-chat-bar px-4 pb-3">
@@ -21,12 +21,6 @@ export function PhoneMockup({ entries, preview }: { entries: ThreadEntry[]; prev
           <p className="text-caption font-semibold">Thya</p>
           <p className="text-label text-ink-muted">Your agent</p>
         </div>
-        <span
-          data-show={preview}
-          className="rounded-control border border-dashed border-line-strong px-2 py-0.5 font-mono text-label text-ink-muted uppercase opacity-0 transition-opacity duration-300 data-[show=true]:opacity-100"
-        >
-          Preview
-        </span>
       </div>
       <div className="relative flex h-chat flex-col justify-end gap-2 overflow-hidden px-3 py-3 text-bubble">
         {entries.map((entry) => {

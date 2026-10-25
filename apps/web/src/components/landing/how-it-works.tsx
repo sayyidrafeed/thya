@@ -7,12 +7,8 @@ import { SectionHeading } from "@/components/landing/section-heading";
 import { StepPanel } from "@/components/landing/step-panel";
 import { useActiveStep } from "@/hooks/use-active-step";
 import { howItWorksHeading, howItWorksSteps } from "@/lib/landing/how-it-works";
-import { showcaseScenes } from "@/lib/landing/showcase-scenes";
 
 const ease = [0.22, 1, 0.36, 1] as const;
-
-const isNext = (sceneId: string) =>
-  showcaseScenes.find((scene) => scene.id === sceneId)?.group === "next";
 
 export function HowItWorks() {
   const listRef = useRef<HTMLOListElement>(null);
@@ -41,12 +37,6 @@ export function HowItWorks() {
               <div className="flex flex-col gap-4">
                 <p className="flex items-center gap-3 font-mono text-label text-ink-muted">
                   <span className="tabular-nums">{String(index + 1).padStart(2, "0")}</span>
-                  <span
-                    data-upcoming={isNext(step.sceneId)}
-                    className="rounded-control bg-surface-muted px-2 py-0.5 text-ink uppercase data-[upcoming=true]:border data-[upcoming=true]:border-dashed data-[upcoming=true]:border-line-strong data-[upcoming=true]:bg-transparent"
-                  >
-                    {isNext(step.sceneId) ? "Coming next" : "Works today"}
-                  </span>
                 </p>
                 <h3 className="text-title font-medium text-balance md:text-display">
                   {step.title}
