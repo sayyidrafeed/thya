@@ -115,7 +115,7 @@ Image dibangun di GitHub Actions, bukan di VPS. Dengan begitu RAM VPS tidak terp
 ```
 push ke main → CI (fmt, lint, typecheck, test)
              → Publish images: build apps/api dan apps/web → ghcr.io/sayyidrafeed/thya-{api,web}:main + :sha-<commit>
-             → POST /api/application.deploy ke Dokploy → Dokploy pull :main dan restart service
+             → POST ke webhook Auto Deploy Dokploy → Dokploy pull :main dan restart service
 ```
 
 - Workflow: `.github/workflows/ci.yml` dan `.github/workflows/publish-images.yml`. Publish hanya berjalan setelah CI sukses pada push ke `main`; pull request tidak pernah sampai ke tahap publish.
@@ -125,12 +125,10 @@ push ke main → CI (fmt, lint, typecheck, test)
 | Nama | Jenis | Isi |
 |---|---|---|
 | `API_PUBLIC_URL` | variable | `https://thya-api.sayyidrafee.com` (build arg `NEXT_PUBLIC_API_URL` untuk web) |
-| `DOKPLOY_URL` | variable | `https://deploy.sayyidrafee.com` |
-| `DOKPLOY_API_APPLICATION_ID` | variable | ID aplikasi `thya-api` di Dokploy (terlihat di URL halaman aplikasi) |
-| `DOKPLOY_WEB_APPLICATION_ID` | variable | ID aplikasi web, kalau landing jalan di VPS ini |
-| `DOKPLOY_API_KEY` | **secret** | API key Dokploy (Profile → API/CLI). Diisi Rafee sendiri. Key ini setara akses admin Dokploy |
+| `DOKPLOY_API_WEBHOOK_URL` | **secret** | Webhook URL aplikasi `thya-api` (tab General → Auto Deploy on, lalu tab Deployments → Webhook URL). Diisi Rafee sendiri; token di URL itu cukup untuk memicu deploy |
+| `DOKPLOY_WEB_WEBHOOK_URL` | **secret** | Sama, untuk aplikasi web kalau landing jalan di VPS ini |
 
-  Kalau `DOKPLOY_*` belum diisi, workflow tetap mem-publish image dan melewati langkah deploy.
+  Kalau secret webhook belum diisi, workflow tetap mem-publish image dan melewati langkah deploy. Webhook dipilih daripada API key Dokploy karena API key setara akses admin, sedangkan webhook hanya bisa memicu deploy satu aplikasi. Kalau URL bocor, buat ulang token di Dokploy (Deployments → Refresh Token).
 
 ### Aplikasi `thya-api` di Dokploy
 
