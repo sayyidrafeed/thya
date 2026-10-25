@@ -32,7 +32,7 @@ export function HowItWorks() {
             <li
               key={step.sceneId}
               data-active={index === activeIndex}
-              className="flex flex-col gap-8 transition duration-500 ease-out-soft motion-reduce:transition-none md:min-h-[70vh] md:justify-center md:data-[active=false]:opacity-30 md:data-[active=false]:blur-xs"
+              className="flex flex-col gap-8 transition duration-500 ease-out-soft data-[active=false]:opacity-30 data-[active=false]:blur-xs motion-reduce:transition-none md:min-h-[70vh] md:justify-center"
             >
               <div className="flex flex-col gap-4">
                 <p className="flex items-center gap-3 font-mono text-label text-ink-muted">

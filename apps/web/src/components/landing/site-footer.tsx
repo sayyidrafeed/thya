@@ -41,7 +41,7 @@ export function SiteFooter() {
             Thya
           </p>
           <p className="text-caption text-pretty text-ink-muted">
-            Ask how your shop did today. Get the answer in a chat.
+            Ask how your shop did today. Get the answer on WhatsApp.
           </p>
           <p className="text-caption text-ink-muted">
             © 2026 Thya · The language model runs on servers in Indonesia.

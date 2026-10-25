@@ -5,6 +5,7 @@ import { m } from "motion/react";
 import { TypingBubble } from "@/components/chat/bubbles";
 import { StepBubble } from "@/components/chat/step-bubble";
 import { DeviceFrame } from "@/components/landing/device-frame";
+import { WhatsAppGlyph } from "@/components/ui/app-icon";
 import { ThyaMark } from "@/components/ui/thya-mark";
 import type { ThreadEntry } from "@/hooks/use-showcase";
 import { showcaseScenes } from "@/lib/landing/showcase-scenes";
@@ -17,7 +18,10 @@ export function ChatHeader() {
       </span>
       <div className="flex-1 leading-tight">
         <p className="text-caption font-semibold">Thya</p>
-        <p className="text-label text-ink-muted">Your agent</p>
+        <p className="flex items-center gap-1 text-label text-ink-muted">
+          <WhatsAppGlyph className="size-3" />
+          Your agent on WhatsApp
+        </p>
       </div>
     </div>
   );

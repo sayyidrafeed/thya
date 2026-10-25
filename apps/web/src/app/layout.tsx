@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Thya: ask how your shop did today",
   description:
-    "Thya is a prototype business assistant for small food and drink shops in Indonesia. Ask about revenue, best sellers, and margin in a chat.",
+    "Thya is a prototype business assistant for small food and drink shops in Indonesia. Ask about revenue, best sellers, and margin on WhatsApp.",
 };
 
 export const viewport: Viewport = {

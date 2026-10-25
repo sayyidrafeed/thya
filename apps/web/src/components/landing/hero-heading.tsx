@@ -3,6 +3,7 @@
 import { m } from "motion/react";
 import { Fragment } from "react";
 
+import { WhatsAppGlyph } from "@/components/ui/app-icon";
 import { firstUserLine, showcaseScenes } from "@/lib/landing/showcase-scenes";
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -41,7 +42,10 @@ export function HeroHeading({ activeIndex }: { activeIndex: number }) {
           transition={{ delay: 0.45, duration: 0.6 }}
           className="block text-ink-muted"
         >
-          Get the answer in a chat.
+          Get the answer on{" "}
+          <span className="whitespace-nowrap">
+            <WhatsAppGlyph className="inline size-[0.8em] align-[-0.06em]" /> WhatsApp.
+          </span>
         </m.span>
       </h1>
       <m.p

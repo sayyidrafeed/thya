@@ -42,3 +42,12 @@ export function AppIcon({ app, size = "md" }: { app: TileId; size?: keyof typeof
     </span>
   );
 }
+
+// The bare WhatsApp glyph in its brand green, for inline use next to text.
+export function WhatsAppGlyph({ className }: { className: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`fill-app-whatsapp ${className}`}>
+      <path d={shopApps.whatsapp.path} />
+    </svg>
+  );
+}
