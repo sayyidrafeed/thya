@@ -63,7 +63,7 @@ export function MeetThya() {
             <h3 className="mt-3 text-title font-semibold text-balance">{trait.title}</h3>
             <p className="mt-2 text-caption text-pretty text-ink-muted">{trait.body}</p>
             <div className="mt-auto rounded-card bg-chat p-3">
-              <p className="w-fit max-w-full rounded-bubble rounded-tl-sm bg-bubble-in px-3 py-2 text-chat text-ink shadow-card">
+              <p className="w-fit max-w-full rounded-bubble rounded-tl-sm bg-bubble-in px-3 py-2 text-bubble text-ink shadow-card">
                 {trait.quote}
               </p>
             </div>

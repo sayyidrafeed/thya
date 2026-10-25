@@ -67,7 +67,7 @@ export function Problem() {
               {questions.map((question) => (
                 <li
                   key={question}
-                  className="w-fit max-w-full rounded-bubble rounded-tl-sm bg-surface/12 px-3 py-2 text-chat"
+                  className="w-fit max-w-full rounded-bubble rounded-tl-sm bg-surface/12 px-3 py-2 text-bubble"
                 >
                   {question}
                 </li>

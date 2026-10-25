@@ -19,7 +19,7 @@ export function PhoneMockup({ conversation }: { conversation: MockupConversation
             <p className="text-label text-ink-muted">Sample data · Kopi Senja</p>
           </div>
         </div>
-        <div className="relative flex h-chat flex-col justify-end overflow-hidden px-3 py-4 text-chat">
+        <div className="relative flex h-chat flex-col justify-end overflow-hidden px-3 py-4 text-bubble">
           <m.div
             key={conversation.id}
             initial={{ opacity: 0, y: 12 }}

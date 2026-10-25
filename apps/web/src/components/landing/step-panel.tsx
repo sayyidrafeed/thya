@@ -50,7 +50,7 @@ export function StepPanel({ step }: { step: HowItWorksStep }) {
             <m.p
               variants={appear}
               transition={{ duration: 0.4, ease }}
-              className="ml-auto max-w-[85%] rounded-bubble rounded-tr-sm bg-bubble-out px-3 py-2 text-chat shadow-card"
+              className="ml-auto max-w-[85%] rounded-bubble rounded-tr-sm bg-bubble-out px-3 py-2 text-bubble shadow-card"
             >
               {conversation.question}
             </m.p>
@@ -66,7 +66,7 @@ export function StepPanel({ step }: { step: HowItWorksStep }) {
             <m.div
               variants={appear}
               transition={{ duration: 0.4, ease }}
-              className="max-w-[92%] rounded-bubble rounded-tl-sm bg-bubble-in px-3 py-2 text-chat tabular-nums shadow-card"
+              className="max-w-[92%] rounded-bubble rounded-tl-sm bg-bubble-in px-3 py-2 text-bubble tabular-nums shadow-card"
             >
               <ChatText text={conversation.answer} />
             </m.div>

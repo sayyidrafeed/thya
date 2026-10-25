@@ -72,8 +72,8 @@
   --text-label--line-height: 1.4;
   --text-label--letter-spacing: 0.04em;
   /* Chat bubbles inside the phone. */
-  --text-chat: 0.875rem;
-  --text-chat--line-height: 1.4;
+  --text-bubble: 0.875rem;
+  --text-bubble--line-height: 1.4;
   /* ASCII field in the footer: tight lines so the grid reads as texture. */
   --text-ascii: 0.75rem;
   --text-ascii--line-height: 1;
