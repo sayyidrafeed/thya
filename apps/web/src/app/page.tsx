@@ -6,6 +6,7 @@ import { MeetThya } from "@/components/landing/meet-thya";
 import { Problem } from "@/components/landing/problem";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteHeader } from "@/components/landing/site-header";
+import { Testimonials } from "@/components/landing/testimonials";
 import { MotionProvider } from "@/components/motion/motion-provider";
 
 export default function HomePage() {
@@ -18,6 +19,7 @@ export default function HomePage() {
           <MeetThya />
           <Problem />
           <HowItWorks />
+          <Testimonials />
           <Faq />
           <DeveloperDayCta />
         </main>

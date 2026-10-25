@@ -1,12 +1,8 @@
 // Meet Thya introduces the character, not the mechanics (those live in How it works).
-// Glossary meanings and examples come from real /demo/chat answers in mockup-conversations.ts.
 
 export const meetThya = {
   heading: "Meet Thya.",
-  lead: "The one on your team who's good with numbers. Ask about the shop the way you'd ask a coworker, in everyday Indonesian.",
-  glossaryHeading: "Thya speaks shop, not finance.",
-  glossaryLead:
-    "Every answer names the term and says what it means, so a busy owner never has to guess.",
+  lead: "The one on your team who's good with numbers. Thya works with the apps your shop already runs on, and you ask about all of it in everyday Indonesian.",
 } as const;
 
 export const thyaTraits = [
@@ -14,6 +10,11 @@ export const thyaTraits = [
     id: "language",
     title: "Talks like you do",
     body: "Everyday Indonesian in, plain answers out.",
+  },
+  {
+    id: "apps",
+    title: "Works with your apps",
+    body: "GoFood, GrabFood, ShopeeFood, WhatsApp and Google Sheets.",
   },
   {
     id: "numbers",
@@ -37,28 +38,12 @@ export const thyaTraits = [
   },
 ] as const;
 
-// Words floating around the mascot: the shop words Thya answers about.
-export const shopWords = ["omzet", "menu laris", "margin", "modal bahan", "menu sepi"] as const;
-
-export const glossary = [
-  {
-    term: "Omzet",
-    meaning: "Revenue: every rupiah that came in from sales, before ingredient costs.",
-    example: "Omzet itu semua uang masuk dari jualan, belum dipotong modal bahan.",
-  },
-  {
-    term: "Margin kotor",
-    meaning: "Gross margin: the share of sales left after ingredient costs.",
-    example: "Dari tiap Rp100.000 jualan, sekitar Rp60.500 tersisa setelah modal bahan.",
-  },
-  {
-    term: "Menu terlaris",
-    meaning: "Best sellers: what sold the most in a period, with its revenue and margin.",
-    example: "Es Kopi Susu Gula Aren: 290 terjual minggu ini.",
-  },
-  {
-    term: "Menu sepi",
-    meaning: "Slow movers: what barely sells, often with a thin margin too.",
-    example: "Croissant Butter paling sedikit terjual sekaligus marginnya paling tipis.",
-  },
+// App tiles floating around the mascot: where a food shop's numbers already live.
+export const mascotApps = [
+  "gofood",
+  "grabfood",
+  "shopeefood",
+  "whatsapp",
+  "sheets",
+  "gmail",
 ] as const;

@@ -23,6 +23,9 @@
   --color-on-brand: #ffffff;
   /* Pale brand wash behind tags and the selected item. brand 5.4:1 on brand-soft. */
   --color-brand-soft: #e1eee5;
+  /* Ends of the engine panel gradient: deep leaf shadow to the mascot's light leaf. */
+  --color-brand-deep: #0e3f29;
+  --color-brand-leaf: #7ab648;
   /* Focus ring, 6.1:1 on surface. */
   --color-ring: #1c6b47;
 
@@ -35,6 +38,16 @@
   /* Phone hardware: natural titanium rim and its darker button edge. Decorative only. */
   --color-titanium: #d6d2ca;
   --color-titanium-edge: #a8a399;
+
+  /* Brand colours of the shop apps (Simple Icons). Decorative tiles only, never text. */
+  --color-app-gofood: #00aa13;
+  --color-app-grabfood: #00b14f;
+  --color-app-shopeefood: #ee4d2d;
+  --color-app-whatsapp: #25d366;
+  --color-app-sheets: #34a853;
+  --color-app-gmail: #ea4335;
+  --color-app-instagram: #ff0069;
+  --color-app-tiktok: #000000;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;

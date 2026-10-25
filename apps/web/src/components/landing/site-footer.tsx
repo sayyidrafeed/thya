@@ -13,9 +13,9 @@ const columns = [
   {
     title: "Team",
     items: [
-      { label: "Indy · Team Lead & Business" },
-      { label: "Nawra · Product & Research Lead" },
-      { label: "Rafee · Tech Lead & Engineer" },
+      { label: "Indy · Product Owner" },
+      { label: "Nawra · Business Analyst" },
+      { label: "Rafee · AI Engineer" },
     ],
   },
   {

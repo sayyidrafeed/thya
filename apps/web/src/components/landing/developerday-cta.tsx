@@ -1,16 +1,14 @@
 "use client";
 
 import { ArrowUpRight } from "lucide-react";
-import { useState } from "react";
 
 import { AsciiField } from "@/components/landing/ascii-field";
 import { asciiPatterns } from "@/lib/ascii/flow-field";
 
-// The pattern switcher is for the team review; keep one pattern and drop the switcher once picked.
-export function DeveloperDayCta() {
-  const [patternIndex, setPatternIndex] = useState(0);
-  const pattern = asciiPatterns[patternIndex] ?? asciiPatterns[0];
+// The team picked the flow pattern (A) on 2026-10-25.
+const pattern = asciiPatterns.find((item) => item.id === "flow") ?? asciiPatterns[0];
 
+export function DeveloperDayCta() {
   return (
     <section
       id="developerday"
@@ -37,21 +35,6 @@ export function DeveloperDayCta() {
           <ArrowUpRight aria-hidden="true" className="size-4" />
         </a>
       </div>
-      <fieldset className="relative flex gap-1 rounded-control border-0 glass p-1">
-        <legend className="sr-only">ASCII background</legend>
-        {asciiPatterns.map((item, index) => (
-          <button
-            key={item.id}
-            type="button"
-            aria-pressed={index === patternIndex}
-            onClick={() => setPatternIndex(index)}
-            className="min-h-9 rounded-control px-3 font-mono text-label text-ink-muted transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-pressed:bg-ink aria-pressed:text-surface"
-          >
-            {String.fromCharCode(65 + index)}
-            <span className="hidden sm:inline"> · {item.label}</span>
-          </button>
-        ))}
-      </fieldset>
     </section>
   );
 }

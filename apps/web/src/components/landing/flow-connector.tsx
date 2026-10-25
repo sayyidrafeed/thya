@@ -1,23 +1,24 @@
 "use client";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useReducedMotion } from "motion/react";
+import type { ReactNode } from "react";
 
-function Wire({ vertical, delay }: { vertical: boolean; delay: number }) {
+type Point = [x: string, y: string];
+
+// A dashed wire with a brand pulse travelling along it. Ends are percentages of the parent svg, so
+// the dash stays crisp at any size (a scaled viewBox would stretch it).
+export function Wire({ from, to, delay = 0 }: { from: Point; to: Point; delay?: number }) {
   const reduceMotion = useReducedMotion() === true;
-  const [x1, y1, x2, y2] = vertical ? ["50%", "0", "50%", "100%"] : ["0", "50%", "100%", "50%"];
+  const ends = { x1: from[0], y1: from[1], x2: to[0], y2: to[1] };
 
   return (
     <>
-      <line x1={x1} y1={y1} x2={x2} y2={y2} strokeDasharray="4 4" className="stroke-line-strong" />
+      <line {...ends} strokeDasharray="4 4" className="stroke-line-strong" />
       {reduceMotion ? null : (
         <line
-          x1={x1}
-          y1={y1}
-          x2={x2}
-          y2={y2}
+          {...ends}
           pathLength={100}
-          strokeDasharray="22 78"
+          strokeDasharray="18 82"
           strokeLinecap="round"
           strokeWidth={2}
           className="stroke-brand"
@@ -26,7 +27,7 @@ function Wire({ vertical, delay }: { vertical: boolean; delay: number }) {
             attributeName="stroke-dashoffset"
             from="100"
             to="0"
-            dur="1.8s"
+            dur="2s"
             begin={`${delay}s`}
             repeatCount="indefinite"
           />
@@ -36,21 +37,28 @@ function Wire({ vertical, delay }: { vertical: boolean; delay: number }) {
   );
 }
 
-// Dashed wire with a travelling pulse and a label; horizontal from md up, vertical below.
-export function FlowConnector({ label, delay = 0 }: { label: string; delay?: number }) {
+// The vertical wire between two diagram panels, with optional notes on either side.
+export function PanelConnector({
+  left,
+  right,
+  delay = 0,
+}: {
+  left?: ReactNode;
+  right?: ReactNode;
+  delay?: number;
+}) {
   return (
-    <div aria-hidden="true" className="relative flex h-16 items-center justify-center lg:h-auto">
-      <svg className="absolute inset-0 size-full overflow-visible lg:hidden">
-        <Wire vertical delay={delay} />
-      </svg>
-      <svg className="absolute inset-0 hidden size-full overflow-visible lg:block">
-        <Wire vertical={false} delay={delay} />
-      </svg>
-      <span className="relative flex items-center gap-1 rounded-control border border-line bg-surface px-2.5 py-1 font-mono text-label text-ink-muted">
-        {label}
-        <ChevronDown className="size-3 lg:hidden" />
-        <ChevronRight className="hidden size-3 lg:block" />
-      </span>
+    <div
+      aria-hidden="true"
+      className="grid h-20 grid-cols-[minmax(0,1fr)_3rem_minmax(0,1fr)] items-center gap-3 md:h-24"
+    >
+      <div className="flex justify-end">{left}</div>
+      <div className="relative h-full">
+        <svg className="absolute inset-0 size-full overflow-visible">
+          <Wire from={["50%", "0%"]} to={["50%", "100%"]} delay={delay} />
+        </svg>
+      </div>
+      <div className="flex justify-start">{right}</div>
     </div>
   );
 }
