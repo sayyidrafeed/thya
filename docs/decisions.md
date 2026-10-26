@@ -197,3 +197,7 @@ Keputusan di bawah diambil session engine saat Rafee tidur, supaya pekerjaan tid
 - **Fallback Q2 mengikuti jenis pertanyaan.** Definisi konsep dari retry paksa tidak lagi dipakai sebagai template; pertanyaan non-angka mendapat permintaan maaf netral, dan `showChart` punya template caption. Pemilik: Rafee.
 - **"Balik modal" tanya balik modal awal tanpa angka pengganti** (`PAYBACK_RULE` di prompt, kasus `balik-modal-asks-back` 1/3 → 3/3). Pemilik yang lebih tepat adalah registry semantic (konsep "belum tercatat" untuk balik modal), lalu aturan prompt ini dihapus. Pemilik: Rafee.
 - **Budget `queryMetric` diturunkan ke 3 putaran sesuai U9** (kode sebelumnya masih 4). Pemilik: Rafee.
+
+## 2026-10-27 (worker health, Rafee)
+
+- **Worker membuka `/health` sendiri** dengan route dan aturan yang sama seperti API (503 hanya kalau DB tidak terjangkau), di `PORT` tanpa domain. Alasan: `HEALTHCHECK` image ikut aktif di `thya-worker`, dan karena worker tidak punya HTTP, Swarm mematikannya tiap ±1,5 menit sehingga queue macet sekitar 14 jam (`jobs: stalled`). Endpoint ini menggantikan instruksi "matikan healthcheck di Dokploy". Pemilik: Rafee.
