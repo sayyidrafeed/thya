@@ -5,8 +5,10 @@ import { createDb } from "./db/client";
 import { runMigrations } from "./db/migrate";
 import { env, whatsapp } from "./env";
 import { demoChatStream } from "./http/demo";
+import { healthRoute } from "./http/health";
 import { whatsappWebhook } from "./http/whatsapp";
 import { loadDemoAttachment } from "./modules/attachments";
+import { checkHealth, STALLED_AFTER_SECONDS } from "./modules/health";
 import { ensureDemoBusiness } from "./modules/business";
 import { hasSales, seedDemoSales } from "./sales/repository";
 import { newTraceId } from "./trace";
@@ -33,6 +35,25 @@ const boss = await startWorkers(db, env.DATABASE_URL, env.JOBS_IN_SERVER).catch(
   return null;
 });
 
+const healthInput = { db, jobsStarted: boss !== null, whatsappConfigured: whatsapp !== null };
+
+if (whatsapp && !boss)
+  console.error("WhatsApp sudah diisi, tapi queue gagal start, jadi webhook dimatikan.");
+
+// Acked webhooks with no process working the queues are stored and never answered, so say it loudly.
+async function warnIfQueueStalled() {
+  const health = await checkHealth(healthInput);
+
+  if (health.jobs !== "stalled") return;
+
+  console.error(
+    `Queue macet ${health.queueLagSeconds} detik: tidak ada proses yang mengerjakan job, jadi pesan WhatsApp tersimpan tapi tidak dibalas. ${env.JOBS_IN_SERVER ? "Cek log job di server ini." : "Jalankan service worker (bun src/worker.ts) atau set JOBS_IN_SERVER=1."}`,
+  );
+}
+
+if (whatsapp && boss)
+  setInterval(() => void warnIfQueueStalled(), (STALLED_AFTER_SECONDS + 120) * 1000);
+
 const demoChatBody = z.object({
   messages: z.array(z.unknown()).min(1).max(100),
 });
@@ -56,7 +77,7 @@ export const app = new Elysia({ serve: { maxRequestBodySize: 256 * 1024 } })
       return "";
     }
   })
-  .get("/health", () => ({ ok: true }))
+  .use(healthRoute(healthInput))
   // Pictures from showChart for the web demo only (features §4.2); real businesses' never leave by HTTP.
   .get("/attachments/:id", async ({ params, status }) => {
     if (!z.uuid().safeParse(params.id).success) return status(404, "not found");
