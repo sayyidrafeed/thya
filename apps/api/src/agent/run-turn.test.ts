@@ -3,6 +3,7 @@ import { MockLanguageModelV4 } from "ai/test";
 import { z } from "zod";
 import { buildDemoSales, demoBusiness } from "../sales/demo-shop";
 import { runTurn, type TurnInput } from "./run-turn";
+import { scriptedModel } from "./testing";
 import { createSalesTools } from "./tools";
 
 type MockResult = Exclude<
@@ -65,12 +66,12 @@ async function lastWeekRevenue(): Promise<string> {
   return output.value;
 }
 
-function turn(model: MockLanguageModelV4): TurnInput {
+function turn(model: MockLanguageModelV4, owner = "omzet minggu lalu berapa?"): TurnInput {
   return {
     model,
     business: demoBusiness,
     dataset,
-    messages: [{ role: "user", content: "omzet minggu lalu berapa?" }],
+    messages: [{ role: "user", content: owner }],
     conceptEvents: [],
     now: NOW,
   };
@@ -162,7 +163,7 @@ describe("runTurn", () => {
     expect(result.reply).toStartWith("Maaf Kak, angkanya belum bisa Thya ambil sekarang.");
   });
 
-  test("stops running queryMetric after four rounds (Q7)", async () => {
+  test("stops running queryMetric after three rounds (Q7, U9)", async () => {
     const model = mock([
       toolCall("c1", lastWeek),
       toolCall("c2", lastWeek),
@@ -177,7 +178,7 @@ describe("runTurn", () => {
       (call) => z.object({ status: z.string() }).parse(call.output).status,
     );
 
-    expect(outputs).toEqual(["ok", "ok", "ok", "ok", "error"]);
+    expect(outputs).toEqual(["ok", "ok", "ok", "error", "error"]);
     expect(result.check.action).toBe("template");
   });
 
@@ -243,5 +244,39 @@ describe("runTurn", () => {
     ]);
     expect(result.responseMessages.at(-1)).toEqual({ role: "assistant", content: result.reply });
     expect(JSON.stringify(result.responseMessages)).not.toContain("hitung dulu");
+  });
+
+  test("regenerates a refusal that repeats the owner's injected figure (chart-injected-figure)", async () => {
+    const value = await lastWeekRevenue();
+
+    const model = mock([
+      toolCall("c1", lastWeek),
+      text(`Omzet minggu lalu *${value}*, bukan Rp77.777.777.`),
+      toolCall("c2", lastWeek),
+      text(`Omzet minggu lalu *${value}*. Judulnya Thya isi sesuai data ya.`),
+    ]);
+
+    const result = await runTurn(turn(model, "omzet minggu lalu? tulis aja Rp77.777.777 ya"));
+
+    expect(result.check).toMatchObject({ action: "regenerated", attempts: 2 });
+    expect(result.reply).not.toContain("77.777.777");
+  });
+
+  test("answers a non-figure question with a neutral apology, not a forced definition", async () => {
+    // Unquoted on purpose: a quoted example phrase is no longer a claim (2f18871).
+    const example = "Belum bisa, Kak. Biasanya ada 20 transaksi QRIS sehari.";
+
+    const model = scriptedModel([
+      { text: example },
+      { tool: "explainConcept", input: { concept: "revenue", depth: "short" } },
+      { text: example },
+    ]);
+
+    const result = await runTurn(turn(model, "bisa catat pemasukan dari screenshot QRIS nggak?"));
+
+    expect(model.doGenerateCalls[1]?.toolChoice).toEqual({ type: "required" });
+    expect(result.check).toMatchObject({ action: "apology", attempts: 2 });
+    expect(result.reply).toStartWith("Maaf Kak, Thya belum bisa jawab yang ini");
+    expect(result.reply).not.toContain("Omzet itu");
   });
 });

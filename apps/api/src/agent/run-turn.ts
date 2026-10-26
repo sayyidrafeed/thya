@@ -24,7 +24,7 @@ export const MAX_STEPS = 5;
 const TURN_TIMEOUT_MS = 40_000;
 
 // Decision Q7: rounds (steps that call the tool), not individual calls.
-const TOOL_ROUND_LIMITS = new Map<SalesToolName, number>([["queryMetric", 4]]);
+const TOOL_ROUND_LIMITS = new Map<SalesToolName, number>([["queryMetric", 3]]);
 
 export type { Attachment, AttachmentPort } from "./chart-tool";
 
@@ -155,7 +155,7 @@ function evidenceFor(input: TurnInput, { toolCalls }: Attempt): string[] {
     ...promptFacts(input.business, input.now),
     // Prices and costs in the profile block come from tables, so a reply may repeat them.
     ...(input.memory?.profile ? [input.memory.profile] : []),
-    JSON.stringify(input.messages),
+    JSON.stringify(input.messages.filter((message) => message.role !== "user")),
     ...toolCalls.map((call) => JSON.stringify([call.input, call.output])),
   ];
 }
@@ -212,7 +212,9 @@ function sumUsage(attempts: Attempt[]): TurnResult["usage"] {
 }
 
 function grounded(input: TurnInput, chosen: Attempt) {
-  const ungrounded = ungroundedNumbers(chosen.text, evidenceFor(input, chosen));
+  const ungrounded = ungroundedNumbers(chosen.text, evidenceFor(input, chosen), [
+    JSON.stringify(input.messages.filter((message) => message.role === "user")),
+  ]);
 
   if (ungrounded.length === 0 && chosen.text) return { reply: chosen.text, ungrounded };
 
@@ -335,7 +337,8 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   }
 
   const withTools = attempts.findLast((candidate) => candidate.toolCalls.length > 0) ?? first;
-  const fallback = fallbackReply(withTools.toolCalls);
+  // A first attempt without tools means any tools here come from the forced retry (Q2c).
+  const fallback = fallbackReply(withTools.toolCalls, { forcedTool: first.toolCalls.length === 0 });
 
   return finish(withTools, fallback.reply, fallback.action, firstCheck.ungrounded);
 }

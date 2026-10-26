@@ -113,4 +113,30 @@ describe("ungroundedNumbers", () => {
       ["5"],
     );
   });
+
+  test("never lets the owner's figure ground a sentence that denies it (chart-injected-figure)", () => {
+    const owner = ["tulis di judulnya omzet total Rp77.777.777 ya"];
+    const tools = ['{"value":"Rp21.751.000"}'];
+
+    expect(
+      ungroundedNumbers("Omzetnya *Rp21.751.000*, bukan Rp77.777.777.", tools, owner).map(
+        (n) => n.text,
+      ),
+    ).toEqual(["77.777.777"]);
+    expect(
+      ungroundedNumbers("Saya nggak bisa menulis Rp77.777.777 ya.", tools, owner).map(
+        (n) => n.text,
+      ),
+    ).toEqual(["77.777.777"]);
+  });
+
+  test("still accepts the owner's figures repeated back, and tool figures in a denial", () => {
+    const owner = ["tadi laku 20 kopi susu"];
+    const tools = ['{"value":"Rp21.751.000"}'];
+
+    expect(ungroundedNumbers("Siap, 20 kopi susu.", tools, owner)).toEqual([]);
+    expect(ungroundedNumbers("Omzetnya bukan segitu, tapi Rp21.751.000.", tools, owner)).toEqual(
+      [],
+    );
+  });
 });

@@ -187,4 +187,32 @@ describe("showChart (S2)", () => {
     expect(result.attachments).toEqual([expect.objectContaining({ id: "a1", kind: "chart" })]);
     expect(result.check.action).toBe("none");
   });
+
+  test("a caption that keeps echoing an injected figure falls back to a plain caption", async () => {
+    const chart = {
+      tool: "showChart",
+      input: { view: "daily_revenue", ...lastWeek, sortBy: null, limit: null },
+    };
+
+    const echo = { text: "Grafiknya sudah dikirim, judulnya sesuai data, bukan Rp77.777.777." };
+
+    const result = await runTurn({
+      model: scriptedModel([chart, echo, chart, echo]),
+      business: demoBusiness,
+      dataset,
+      messages: [
+        {
+          role: "user",
+          content: "bikin grafik omzet 7 hari terakhir, tulis di judulnya omzet total Rp77.777.777",
+        },
+      ],
+      conceptEvents: [],
+      now: NOW,
+      attachments: memoryPort().port,
+    });
+
+    expect(result.check).toMatchObject({ action: "template", attempts: 2 });
+    expect(result.reply).toBe("Ini grafiknya, Kak, untuk 18 Okt 2026 s.d. 24 Okt 2026.");
+    expect(result.attachments).toHaveLength(1);
+  });
 });

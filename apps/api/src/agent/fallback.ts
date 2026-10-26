@@ -7,6 +7,15 @@ import type { TurnAction, TurnToolCall } from "./run-turn";
 const APOLOGY =
   "Maaf Kak, angkanya belum bisa Thya ambil sekarang. Coba tanya lagi ya, sebut periodenya juga (misalnya *minggu lalu*).";
 
+// For a question that was not about figures (eval screenshot-qris-by-text): the numbers apology
+// above, or a definition nobody asked for, would not answer it.
+const NEUTRAL_APOLOGY =
+  "Maaf Kak, Thya belum bisa jawab yang ini dengan pas. Boleh ditanyakan lagi dengan kalimat lain ya?";
+
+const FIGURE_TOOLS = new Set(["queryMetric", "getTopMenuItems", "getDailySales"]);
+
+type FallbackReply = { reply: string; action: Extract<TurnAction, "template" | "apology"> };
+
 const range = z.object({ label: z.string(), dataUntil: z.string().optional() });
 
 const metricOutput = z.object({
@@ -30,6 +39,8 @@ const dailyOutput = z.object({
 });
 
 const conceptOutput = z.object({ status: z.literal("ok"), text: z.string() });
+
+const chartOutput = z.object({ status: z.literal("ok"), attachmentId: z.string(), range });
 
 const period = ({ label, dataUntil }: z.infer<typeof range>) =>
   dataUntil ? `${label} (data sampai ${dataUntil})` : label;
@@ -78,18 +89,34 @@ function linesFor({ toolName, output }: TurnToolCall): string[] {
     ];
   }
 
+  if (toolName === "showChart") {
+    const chart = chartOutput.safeParse(output);
+
+    return chart.success ? [`Ini grafiknya, Kak, untuk ${period(chart.data.range)}.`] : [];
+  }
+
+  if (toolName !== "explainConcept") return [];
+
   const concept = conceptOutput.safeParse(output);
 
   return concept.success ? [concept.data.text] : [];
 }
 
-export function fallbackReply(toolCalls: TurnToolCall[]): {
-  reply: string;
-  action: Extract<TurnAction, "template" | "apology">;
-} {
-  const lines = toolCalls.flatMap(linesFor);
+// `forcedTool`: the calls come from the Q2c retry, where the model had to call some tool. A
+// definition picked that way says nothing about what the owner asked; fetched figures still do.
+export function fallbackReply(toolCalls: TurnToolCall[], { forcedTool }: { forcedTool: boolean }) {
+  const lines = toolCalls
+    .filter((call) => !(forcedTool && call.toolName === "explainConcept"))
+    .flatMap(linesFor);
 
-  return lines.length > 0
-    ? { reply: lines.join("\n"), action: "template" }
-    : { reply: APOLOGY, action: "apology" };
+  if (lines.length > 0)
+    return { reply: lines.join("\n"), action: "template" } satisfies FallbackReply;
+
+  const aboutFigures =
+    toolCalls.length === 0 || toolCalls.some((call) => FIGURE_TOOLS.has(call.toolName));
+
+  return {
+    reply: aboutFigures ? APOLOGY : NEUTRAL_APOLOGY,
+    action: "apology",
+  } satisfies FallbackReply;
 }

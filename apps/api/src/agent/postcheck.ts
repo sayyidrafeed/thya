@@ -34,6 +34,9 @@ const LIST_MARKER = /^\s*\d+[.)]\s/gm;
 const QUOTED = /["“]([^"”\n]{1,80})["”]/g;
 const CLAIM_IN_QUOTE = /rp|%|\d{1,3}(?:\.\d{3})+|\d\s?(?:rb|ribu|k|jt|juta|miliar|M)\b/i;
 
+// A sentence that denies or refuses ("bukan Rp77.777.777", "nggak bisa menulis ...").
+const DENIAL = /(?<!\p{L})(bukan|tidak|tak|nggak|ngga|enggak|gak|ga|ndak)(?!\p{L})/iu;
+
 function readNumber(match: RegExpExecArray): Reading {
   const [, whole = "", fraction, unit] = match;
   const scale = unit ? (SCALES.get(unit) ?? 1) : 1;
@@ -97,9 +100,17 @@ function sentenceAt(reply: string, index: number): string {
   return reply.slice(start + 1, ends.length > 0 ? Math.min(...ends) + 1 : reply.length).trim();
 }
 
-export function ungroundedNumbers(reply: string, evidence: readonly string[]): UngroundedNumber[] {
+// `ownerSaid` grounds a figure only the owner typed, unless the reply repeats it to deny it: an
+// injected figure must not come back even as "bukan Rp77.777.777" (eval chart-injected-figure).
+export function ungroundedNumbers(
+  reply: string,
+  evidence: readonly string[],
+  ownerSaid: readonly string[] = [],
+): UngroundedNumber[] {
   const knownValues = evidenceValues(evidence);
   const knownTimes = evidence.flatMap(timesIn);
+  const ownerValues = evidenceValues(ownerSaid);
+  const ownerTimes = ownerSaid.flatMap(timesIn);
   const ungrounded: UngroundedNumber[] = [];
 
   // Blank out list markers, example phrases and times, so "15.00" never reads as fifteen.
@@ -109,22 +120,39 @@ export function ungroundedNumbers(reply: string, evidence: readonly string[]): U
       CLAIM_IN_QUOTE.test(inner) ? quote : " ".repeat(quote.length),
     );
 
+  function check(
+    text: string,
+    index: number,
+    groundedBy: (values: number[], times: Time[]) => boolean,
+  ) {
+    const sentence = sentenceAt(reply, index);
+
+    if (groundedBy(knownValues, knownTimes)) return;
+
+    if (!DENIAL.test(sentence) && groundedBy(ownerValues, ownerTimes)) return;
+
+    ungrounded.push({ text, sentence });
+  }
+
   for (const match of rest.matchAll(TIME)) {
     const [text, hour, minute] = match;
 
     // "10.50" may be a decimal rather than a clock time, so either reading can ground it.
-    const grounded =
-      knownTimes.some((time) => time.hour === Number(hour) && time.minute === Number(minute)) ||
-      isGrounded({ value: Number(`${hour}.${minute}`), decimals: 2, scale: 1 }, knownValues);
-
-    if (!grounded) ungrounded.push({ text, sentence: sentenceAt(reply, match.index) });
+    check(
+      text,
+      match.index,
+      (values, times) =>
+        times.some((time) => time.hour === Number(hour) && time.minute === Number(minute)) ||
+        isGrounded({ value: Number(`${hour}.${minute}`), decimals: 2, scale: 1 }, values),
+    );
   }
 
   rest = rest.replace(TIME, (time) => " ".repeat(time.length));
 
   for (const match of rest.matchAll(NUMBER)) {
-    if (!isGrounded(readNumber(match), knownValues))
-      ungrounded.push({ text: match[0].trim(), sentence: sentenceAt(reply, match.index) });
+    const reading = readNumber(match);
+
+    check(match[0].trim(), match.index, (values) => isGrounded(reading, values));
   }
 
   return ungrounded;
