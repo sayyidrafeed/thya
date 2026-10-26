@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessage } from "ai";
-import type { MenuItem, SaleRecord } from "../sales/report";
+import type { MenuItem, PaymentDay, SaleRecord } from "../sales/report";
 import { interpretation, pickExplanation } from "./explain";
 import { eventsFromHistory, exposureLevel, queryMetricEvents, type ConceptEvent } from "./exposure";
 import { computeMetric } from "./metrics";
@@ -44,6 +44,7 @@ describe("computeMetric", () => {
       requested: "profit",
       menu,
       records,
+      payments: [],
       range: thisWeek,
       previousRange: lastWeek,
     });
@@ -62,6 +63,7 @@ describe("computeMetric", () => {
       requested: "net_profit",
       menu,
       records,
+      payments: [],
       range: thisWeek,
       previousRange: null,
     });
@@ -79,6 +81,7 @@ describe("computeMetric", () => {
       requested: "gross_margin",
       menu,
       records,
+      payments: [],
       range: thisWeek,
       previousRange: lastWeek,
     });
@@ -94,6 +97,7 @@ describe("computeMetric", () => {
         requested,
         menu,
         records,
+        payments: [],
         range: lastWeek,
         previousRange: quietWeek,
       });
@@ -112,7 +116,7 @@ describe("computeMetric", () => {
       sale("2026-10-19", "kopi", 1, lossMenu),
     ];
 
-    const query = { range: thisWeek, previousRange: lastWeek };
+    const query = { range: thisWeek, previousRange: lastWeek, payments: [] };
 
     expect(computeMetric({ ...query, requested: "revenue", menu, records: tiny })).toMatchObject({
       change: "0%",
@@ -123,11 +127,113 @@ describe("computeMetric", () => {
   });
 });
 
+describe("uang masuk QRIS (G10)", () => {
+  // Two payment days this week, one last week, one the day after the week ends.
+  const payments: PaymentDay[] = [
+    { date: "2026-10-18", amount: 40_000 },
+    { date: "2026-10-19", amount: 97_500 },
+    { date: "2026-10-25", amount: 18_000 },
+    { date: "2026-10-26", amount: 500_000 },
+  ];
+
+  const query = { menu, records, payments, range: thisWeek, previousRange: lastWeek };
+
+  test("is the sum of the payments inside the period, compared with the period before", () => {
+    expect(computeMetric({ ...query, requested: "qris_in" })).toMatchObject({
+      status: "ok",
+      metric: "qris_in",
+      value: "Rp115.500",
+      previousValue: "Rp40.000",
+      change: "+188,8%",
+      estimated: false,
+    });
+  });
+
+  test("S9-AC8: payments never change menu revenue", () => {
+    for (const requested of ["revenue", "gross_profit", "gross_margin"] as const) {
+      const without = computeMetric({ ...query, requested, payments: [] });
+      const withPayments = computeMetric({ ...query, requested });
+
+      expect(withPayments.status === "ok" && withPayments.value).toBe(
+        without.status === "ok" && without.value,
+      );
+    }
+  });
+
+  test("a period without payments is Rp0 and has no percent change against it", () => {
+    expect(
+      computeMetric({ ...query, requested: "qris_in", range: lastWeek, previousRange: null }),
+    ).toMatchObject({ value: "Rp40.000", change: null });
+    expect(
+      computeMetric({
+        ...query,
+        requested: "qris_in",
+        range: { start: "2026-10-12", end: "2026-10-17" },
+        previousRange: null,
+      }),
+    ).toMatchObject({ value: "Rp0" });
+  });
+
+  test("the owner's words map to the metric", () => {
+    expect(findTerm("Uang masuk QRIS")?.concepts).toEqual(["qris_in"]);
+    expect(findTerm("qris")?.concepts).toEqual(["qris_in"]);
+  });
+});
+
+describe("estimated menu costs (semantic-education item 6)", () => {
+  const guessed = (record: SaleRecord): SaleRecord => ({ ...record, costEstimated: true });
+
+  // This week the croissant cost is only the owner's guess; last week is all known costs.
+  const mixed = records.map((record) =>
+    record.date === "2026-10-19" && record.itemId === "croissant" ? guessed(record) : record,
+  );
+
+  const query = { menu, payments: [], range: thisWeek, previousRange: lastWeek };
+
+  test("every cost-based metric is flagged when any cost behind it is an estimate", () => {
+    for (const requested of ["cogs", "gross_profit", "profit", "gross_margin"] as const) {
+      expect(computeMetric({ ...query, requested, records: mixed })).toMatchObject({
+        estimated: true,
+      });
+    }
+  });
+
+  test("revenue, items sold and QRIS money in never carry the flag", () => {
+    for (const requested of ["revenue", "items_sold", "qris_in"] as const) {
+      expect(computeMetric({ ...query, requested, records: mixed })).toMatchObject({
+        estimated: false,
+      });
+    }
+  });
+
+  test("an estimate in the comparison period flags the change too, and known costs do not", () => {
+    const guessedLastWeek = records.map((record) =>
+      record.date === "2026-10-12" ? guessed(record) : record,
+    );
+
+    expect(
+      computeMetric({ ...query, requested: "gross_profit", records: guessedLastWeek }),
+    ).toMatchObject({ estimated: true });
+    expect(
+      computeMetric({
+        ...query,
+        requested: "gross_profit",
+        records: guessedLastWeek,
+        previousRange: null,
+      }),
+    ).toMatchObject({ estimated: false });
+    expect(computeMetric({ ...query, requested: "gross_profit", records })).toMatchObject({
+      estimated: false,
+    });
+  });
+});
+
 describe("pickExplanation", () => {
   const revenueNoHistory = computeMetric({
     requested: "revenue",
     menu,
     records,
+    payments: [],
     range: lastWeek,
     previousRange: null,
   });
@@ -148,6 +254,7 @@ describe("pickExplanation", () => {
       requested: "revenue",
       menu,
       records,
+      payments: [],
       range: thisWeek,
       previousRange: lastWeek,
     });
@@ -170,6 +277,7 @@ describe("pickExplanation", () => {
       requested: "gross_profit",
       menu,
       records,
+      payments: [],
       range: thisWeek,
       previousRange: lastWeek,
     });

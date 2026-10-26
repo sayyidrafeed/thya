@@ -18,7 +18,14 @@ export type SaleRecord = {
   quantity: number;
   unitPrice: number;
   unitCost: number;
+  // True when that cost is the owner's rough guess (menu_costs.source "estimate"), so every
+  // profit figure built on it is labelled "perkiraan" (semantic-education D4, item 6).
+  costEstimated?: boolean;
 };
+
+// Money in through QRIS/GoPay, summed per WIB day (G10). Its own metric and never part of menu
+// revenue: the owner may also record the same sale as a menu item.
+export type PaymentDay = { date: string; amount: number };
 
 export type DateRange = { start: string; end: string };
 
@@ -209,6 +216,7 @@ export function summarizeSales(records: SaleRecord[], menu: MenuItem[], range: D
   let revenue = 0;
   let cogs = 0;
   let itemsSold = 0;
+  let costEstimated = false;
 
   for (const record of records) {
     if (!inRange(record.date, range)) continue;
@@ -216,6 +224,7 @@ export function summarizeSales(records: SaleRecord[], menu: MenuItem[], range: D
     revenue += record.unitPrice * record.quantity;
     cogs += record.unitCost * record.quantity;
     itemsSold += record.quantity;
+    costEstimated ||= record.costEstimated === true;
   }
 
   const grossProfit = revenue - cogs;
@@ -227,7 +236,12 @@ export function summarizeSales(records: SaleRecord[], menu: MenuItem[], range: D
     grossMarginPct: marginPct(grossProfit, revenue),
     itemsSold,
     days: dayCount(range),
+    costEstimated,
   };
+}
+
+export function paymentsIn(payments: PaymentDay[], range: DateRange): number {
+  return payments.reduce((sum, day) => (inRange(day.date, range) ? sum + day.amount : sum), 0);
 }
 
 export const MENU_SORT_KEYS = ["revenue", "quantity", "grossProfit"] as const;

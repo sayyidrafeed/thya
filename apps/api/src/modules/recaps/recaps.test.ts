@@ -14,22 +14,26 @@ const yesterday = { start: "2026-10-24", end: "2026-10-24" };
 const lastWeek = { start: "2026-10-12", end: "2026-10-18" };
 
 function evidence(source: SalesDataset): string[] {
-  const metrics = (["revenue", "gross_profit", "gross_margin"] as const).flatMap((requested) => [
-    computeMetric({
-      requested,
-      menu: source.menu,
-      records: source.records,
-      range: lastWeek,
-      previousRange: { start: "2026-10-05", end: "2026-10-11" },
-    }),
-    computeMetric({
-      requested,
-      menu: source.menu,
-      records: source.records,
-      range: yesterday,
-      previousRange: { start: "2026-10-17", end: "2026-10-17" },
-    }),
-  ]);
+  const metrics = (["revenue", "gross_profit", "gross_margin", "qris_in"] as const).flatMap(
+    (requested) => [
+      computeMetric({
+        requested,
+        menu: source.menu,
+        records: source.records,
+        payments: source.payments,
+        range: lastWeek,
+        previousRange: { start: "2026-10-05", end: "2026-10-11" },
+      }),
+      computeMetric({
+        requested,
+        menu: source.menu,
+        records: source.records,
+        payments: source.payments,
+        range: yesterday,
+        previousRange: { start: "2026-10-17", end: "2026-10-17" },
+      }),
+    ],
+  );
 
   return [
     JSON.stringify(metrics),
@@ -159,6 +163,78 @@ describe("buildRecap", () => {
     );
     expect(card).toBeNull();
     expect(facts).toEqual([]);
+  });
+
+  describe("uang masuk QRIS (G10)", () => {
+    const withPayments: SalesDataset = {
+      ...dataset,
+      payments: [
+        { date: "2026-10-13", amount: 40_000 },
+        { date: "2026-10-18", amount: 60_000 },
+        { date: "2026-10-24", amount: 97_500 },
+      ],
+    };
+
+    test("is one line of its own when the period has payments, and omzet does not move", () => {
+      const daily = recapOf(withPayments, "daily", []);
+      const weekly = recapOf(withPayments, "weekly", []);
+
+      expect(daily.text).toContain("\n- Uang masuk QRIS: *Rp97.500* (terpisah dari omzet)\n");
+      expect(weekly.text).toContain("\n- Uang masuk QRIS: *Rp100.000* (terpisah dari omzet)\n");
+      expect(daily.facts).toContain("Rp97.500");
+
+      const omzet = (text: string) => text.split("\n").find((line) => line.startsWith("- Omzet"));
+
+      expect(omzet(daily.text)).toBe(omzet(recapOf(dataset, "daily", []).text));
+      expect(omzet(weekly.text)).toBe(omzet(recapOf(dataset, "weekly", []).text));
+      expect(weekly.card).toEqual(recapOf(dataset, "weekly", []).card);
+
+      for (const recap of [daily, weekly])
+        expect(ungroundedNumbers(recap.text, evidence(withPayments))).toEqual([]);
+    });
+
+    test("is left out when the period has no payments", () => {
+      const lastWeekOnly = { ...withPayments, payments: withPayments.payments.slice(0, 2) };
+
+      expect(recapOf(lastWeekOnly, "daily", []).text).not.toContain("QRIS");
+      expect(recapOf(dataset, "weekly", []).text).not.toContain("QRIS");
+    });
+
+    test("still shows on a day without recorded sales", () => {
+      const closed = withoutDates(withPayments, (date) => date === "2026-10-24");
+
+      expect(recapOf(closed, "daily", [])).toEqual({
+        text: [
+          "*Rekap kemarin, Sabtu 24 Okt 2026*",
+          "Kemarin belum ada penjualan tercatat.",
+          "- Uang masuk QRIS: *Rp97.500* (terpisah dari omzet)",
+        ].join("\n"),
+        card: null,
+        facts: ["Rp97.500"],
+      });
+    });
+  });
+
+  test("profit built on a guessed menu cost is marked perkiraan in text and card", () => {
+    const guessed: SalesDataset = {
+      ...dataset,
+      records: dataset.records.map((record) =>
+        record.itemId === "croissant" ? { ...record, costEstimated: true } : record,
+      ),
+    };
+
+    const { text, card } = recapOf(guessed, "weekly", []);
+
+    expect(text).toContain("\n- Laba kotor (perkiraan): *");
+    expect(text).toContain("\n- Margin kotor (perkiraan): *");
+    expect(text).toContain("\n- Omzet: *");
+    expect(card?.stats.map((stat) => stat.label)).toEqual([
+      "Omzet",
+      "Laba kotor (perkiraan)",
+      "Margin kotor (perkiraan)",
+      "Terjual",
+    ]);
+    expect(recapOf(dataset, "weekly", []).text).not.toContain("perkiraan");
   });
 
   test("the weekly card renders as a PNG through the visuals renderer", () => {

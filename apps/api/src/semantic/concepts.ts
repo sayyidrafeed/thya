@@ -11,6 +11,7 @@ export const CONCEPT_IDS = [
   "menu_cost",
   "operating_expense",
   "cash",
+  "qris_in",
 ] as const;
 
 export type ConceptId = (typeof CONCEPT_IDS)[number];
@@ -87,5 +88,14 @@ export const CONCEPTS: Record<ConceptId, Concept> = {
     whyItMatters:
       "Kas bisa beda dengan untung. Usaha bisa untung tapi kasnya habis karena belanja stok.",
     related: ["net_profit"],
+  },
+  // G10 (Rafee, 2026-10-26): its own figure, never added to omzet.
+  qris_in: {
+    label: "uang masuk QRIS",
+    plain:
+      "Uang masuk QRIS itu total pembayaran QRIS yang Kakak catat dari screenshot. Angka ini terpisah dari omzet, jadi tidak ditambahkan ke omzet supaya jualan yang sama tidak terhitung dua kali.",
+    whyItMatters:
+      "Kalau dibandingkan dengan omzet, kelihatan berapa bagian jualan yang dibayar lewat QRIS dan berapa yang kemungkinan dibayar tunai.",
+    related: ["revenue", "cash"],
   },
 };

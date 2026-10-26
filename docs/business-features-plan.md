@@ -1,6 +1,6 @@
 # Thya: tech plan fitur bisnis (visual, jadwal, Sheets, email)
 
-Status: **disetujui Rafee 2026-10-25 (default Gate 0 dan semua USULAN PERUBAHAN, lihat `docs/decisions.md`).** S9 (screenshot QRIS/GoPay) ditambahkan sore hari yang sama atas keputusan Rafee; G10 masih OPEN dan G11 menunggu sampel asli. Plan ini untuk diserahkan ke thread implementasi. Riset dan perbandingan library ada di `docs/feature-catalog.md`; plan ini tidak mengulangnya, hanya memakai hasilnya.
+Status: **disetujui Rafee 2026-10-25 (default Gate 0 dan semua USULAN PERUBAHAN, lihat `docs/decisions.md`).** S9 (screenshot QRIS/GoPay) ditambahkan sore hari yang sama atas keputusan Rafee; G10 diputuskan Rafee 2026-10-26 dan G11 menunggu sampel asli. Plan ini untuk diserahkan ke thread implementasi. Riset dan perbandingan library ada di `docs/feature-catalog.md`; plan ini tidak mengulangnya, hanya memakai hasilnya.
 
 Hubungan dengan dokumen lain:
 - `docs/engine-plan.md` memegang fondasi: `runTurn`, DB, draft + tombol konfirmasi (Q1), webhook WhatsApp, pg-boss, postcheck, eval. Plan ini **tidak** mengubah keputusan Q1–Q10 dan tidak mengerjakan ulang fondasi itu. Plan ini menambah fitur di atasnya.
@@ -58,7 +58,7 @@ Tidak ada slice yang boleh menambah dependency atau membuat akun eksternal sebel
 | G7 | Siapa "pelanggan" untuk email | Final: tabel `customers` diisi seed demo (alamat tim yang sudah setuju, `consent_source = seed`) untuk usaha demo saja. Import pelanggan dari sheet = Roadmap. SES sandbox hanya mengirim ke alamat terverifikasi, jadi demo terbatas ke allowlist | S7 | Rafee + Indy (aspek UU PDP) |
 | G8 | Nomor WhatsApp final | Nomor test tetap jalan; nomor asli tanpa verifikasi bisnis dicoba di samping nomor test (feature-catalog §9) | S8 | Rafee |
 | G9 | Template Meta | Tiga template utility: rekap harian (teks), rekap mingguan (header IMAGE), pengingat. Diajukan secepatnya karena review sampai 24 jam | S3, S4 | Rafee (akses dashboard Meta) |
-| G10 | Model data pembayaran QRIS | DEFAULT (disetujui session engine): tabel `payments` terpisah dari penjualan per menu, omzet menu tidak berubah. Pembayaran QRIS adalah uang masuk, bukan item menu; menjumlahkannya ke omzet menu membuat omzet dobel kalau pemilik juga mencatat menu. **OPEN untuk Rafee:** nama metriknya ("uang masuk lewat QRIS" atau bagian dari omzet), apakah tampil di rekap, dan apakah settlement disimpan | S9 | Rafee + session engine |
+| G10 | Model data pembayaran QRIS | DEFAULT (disetujui session engine): tabel `payments` terpisah dari penjualan per menu, omzet menu tidak berubah. Pembayaran QRIS adalah uang masuk, bukan item menu; menjumlahkannya ke omzet menu membuat omzet dobel kalau pemilik juga mencatat menu. **Diputuskan Rafee 2026-10-26:** metrik sendiri "uang masuk QRIS" (`qris_in`), bukan bagian omzet; tampil satu baris di rekap harian/mingguan kalau ada pembayaran; settlement belum disimpan | S9 | Rafee + session engine |
 | G11 | Gerbang akurasi ekstraksi gambar | Fitur baru dijanjikan (landing, paper, demo) setelah ≥ 3 screenshot asli dari Rafee lulus S9-AC1. Uji sintetis 2026-10-25 lulus (S9, "Hasil uji"), tapi sintetis bukan bukti untuk tampilan aplikasi asli | S9 klaim | Rafee |
 
 Kalau G7 tidak disetujui, S7 tidak dikerjakan dan scene `email` di landing harus diturunkan (pemilik landing: Rafee).
@@ -584,7 +584,7 @@ AC:
 - S9-AC5. Gambar yang sama dikirim dua kali → draft kedua menyebut semua baris "sudah tercatat"; setelah `Ya` tidak ada baris baru.
 - S9-AC6. Retry eksekutor tidak menggandakan baris (unik `source_key`; integrasi Postgres).
 - S9-AC7. Tidak ada baris tersimpan sebelum `Ya`.
-- S9-AC8. Setelah impor, omzet menu tidak berubah. Jawaban untuk pertanyaan uang masuk QRIS sama dengan jumlah `payments` (bentuk pertanyaan dan metriknya menunggu G10).
+- S9-AC8. Setelah impor, omzet menu tidak berubah. Jawaban untuk pertanyaan uang masuk QRIS (metrik `qris_in`, G10) sama dengan jumlah `payments` dalam periode.
 
 Edge case:
 

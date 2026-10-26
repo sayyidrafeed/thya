@@ -5,6 +5,7 @@ import {
   addDays,
   describeRange,
   formatDateId,
+  paymentsIn,
   previousRange,
   rankMenuItems,
   resolvePeriod,
@@ -25,11 +26,16 @@ export type Recap = { text: string; card: SummaryCard | null; facts: string[] };
 // S3-AC4: the recap must fit a WhatsApp image caption.
 export const RECAP_MAX_CHARS = 1_024;
 
-type Figure = { value: string; change: string | null; trend: CardStat["trend"] };
+type Figure = {
+  value: string;
+  change: string | null;
+  trend: CardStat["trend"];
+  estimated: boolean;
+};
 
 function figure(
   dataset: SalesDataset,
-  metric: "revenue" | "gross_profit" | "gross_margin",
+  metric: "revenue" | "gross_profit" | "gross_margin" | "qris_in",
   range: DateRange,
   previous: DateRange | null,
 ): Figure | null {
@@ -37,13 +43,41 @@ function figure(
     requested: metric,
     menu: dataset.menu,
     records: dataset.records,
+    payments: dataset.payments,
     range,
     previousRange: previous,
   });
 
   return result.status === "ok"
-    ? { value: result.value, change: result.change, trend: result.trend }
+    ? {
+        value: result.value,
+        change: result.change,
+        trend: result.trend,
+        estimated: result.estimated,
+      }
     : null;
+}
+
+// Semantic-education item 6: a figure built on a guessed menu cost says so.
+const labelled = (label: string, { estimated }: Figure) =>
+  estimated ? `${label} (perkiraan)` : label;
+
+// G10: QRIS money in is one line of its own, never added to omzet, and only when there was any.
+function qrisLine(dataset: SalesDataset, range: DateRange) {
+  if (paymentsIn(dataset.payments, range) === 0) return null;
+
+  const qris = figure(dataset, "qris_in", range, null);
+
+  if (qris === null) throw new Error("qris_in is always computable");
+
+  return { line: `- Uang masuk QRIS: *${qris.value}* (terpisah dari omzet)`, fact: qris.value };
+}
+
+// Appends the QRIS line, if any, to a recap that has no sales figures.
+function noSales(text: string, qris: ReturnType<typeof qrisLine>): Recap {
+  return qris === null
+    ? { text, card: null, facts: [] }
+    : { text: `${text}\n${qris.line}`, card: null, facts: [qris.fact] };
 }
 
 function topItem(dataset: SalesDataset, range: DateRange) {
@@ -76,8 +110,10 @@ function dailyRecap(dataset: SalesDataset, events: ConceptEvent[]): Recap {
   const sold =
     yesterday >= dataset.dataStart ? summarizeSales(dataset.records, dataset.menu, range) : null;
 
+  const qris = qrisLine(dataset, range);
+
   if (sold === null || sold.revenue === 0)
-    return { text: `${heading}\nKemarin belum ada penjualan tercatat.`, card: null, facts: [] };
+    return noSales(`${heading}\nKemarin belum ada penjualan tercatat.`, qris);
 
   const lastWeek = addDays(yesterday, -7);
   const comparable = lastWeek >= dataset.dataStart ? { start: lastWeek, end: lastWeek } : null;
@@ -90,6 +126,7 @@ function dailyRecap(dataset: SalesDataset, events: ConceptEvent[]): Recap {
   const lines = [
     heading,
     `- Omzet: ${withChange(revenue, `${weekdayName(lastWeek)} pekan lalu`)}`,
+    ...(qris ? [qris.line] : []),
     ...(top ? [`- Menu terlaris: ${top.name} (${top.quantity} terjual)`] : []),
     ...(tip ? ["", tip] : []),
   ];
@@ -100,6 +137,7 @@ function dailyRecap(dataset: SalesDataset, events: ConceptEvent[]): Recap {
     facts: [
       revenue.value,
       ...(revenue.change ? [revenue.change] : []),
+      ...(qris ? [qris.fact] : []),
       ...(top ? [top.quantity] : []),
     ],
   };
@@ -113,11 +151,10 @@ function weeklyRecap(dataset: SalesDataset, events: ConceptEvent[], businessName
   );
 
   if (lastWeek.end < dataset.dataStart)
-    return {
-      text: "*Rekap minggu lalu*\nBelum ada penjualan tercatat minggu lalu.",
-      card: null,
-      facts: [],
-    };
+    return noSales(
+      "*Rekap minggu lalu*\nBelum ada penjualan tercatat minggu lalu.",
+      qrisLine(dataset, lastWeek),
+    );
 
   // A business newer than a week gets the days it has, never a "minggu lalu" it did not have.
   const partial = lastWeek.start < dataset.dataStart;
@@ -129,14 +166,14 @@ function weeklyRecap(dataset: SalesDataset, events: ConceptEvent[], businessName
   const profit = figure(dataset, "gross_profit", range, comparable);
   const margin = figure(dataset, "gross_margin", range, comparable);
   const sold = summarizeSales(dataset.records, dataset.menu, range);
+  const qris = qrisLine(dataset, range);
 
   // A closed week has no margin; never print an invented 0% next to a real change.
   if (sold.revenue === 0)
-    return {
-      text: `*Rekap ${partial ? label : `minggu lalu (${label})`}*\nBelum ada penjualan tercatat.`,
-      card: null,
-      facts: [],
-    };
+    return noSales(
+      `*Rekap ${partial ? label : `minggu lalu (${label})`}*\nBelum ada penjualan tercatat.`,
+      qris,
+    );
 
   const top = topItem(dataset, range);
   const tip = didYouKnow(["gross_profit", "gross_margin"], events);
@@ -150,11 +187,15 @@ function weeklyRecap(dataset: SalesDataset, events: ConceptEvent[], businessName
   if (revenue === null || profit === null || margin === null)
     throw new Error("weekly figures are always computable");
 
+  const profitLabel = labelled("Laba kotor", profit);
+  const marginLabel = labelled("Margin kotor", margin);
+
   const lines = [
     heading,
     `- Omzet: ${withChange(revenue, against)}`,
-    `- Laba kotor: ${withChange(profit, against)}`,
-    `- Margin kotor: ${withChange(margin, against)}`,
+    `- ${profitLabel}: ${withChange(profit, against)}`,
+    `- ${marginLabel}: ${withChange(margin, against)}`,
+    ...(qris ? [qris.line] : []),
     ...(top ? [`- Menu terlaris: ${top.name} (${top.quantity} terjual)`] : []),
     ...(tip ? ["", tip] : []),
   ];
@@ -169,8 +210,8 @@ function weeklyRecap(dataset: SalesDataset, events: ConceptEvent[], businessName
       periodLabel: label,
       stats: [
         { label: "Omzet", value: revenue.value, change: revenue.change, trend: revenue.trend },
-        { label: "Laba kotor", value: profit.value, change: profit.change, trend: profit.trend },
-        { label: "Margin kotor", value: margin.value, change: margin.change, trend: margin.trend },
+        { label: profitLabel, value: profit.value, change: profit.change, trend: profit.trend },
+        { label: marginLabel, value: margin.value, change: margin.change, trend: margin.trend },
         { label: "Terjual", value: `${itemsSold} porsi`, change: null, trend: null },
       ],
       highlight: top ? { label: "Terlaris", value: top.name } : null,
@@ -182,6 +223,7 @@ function weeklyRecap(dataset: SalesDataset, events: ConceptEvent[], businessName
       margin.value,
       itemsSold,
       ...[revenue, profit, margin].flatMap(({ change }) => (change ? [change] : [])),
+      ...(qris ? [qris.fact] : []),
       ...(top ? [top.quantity] : []),
     ],
   };

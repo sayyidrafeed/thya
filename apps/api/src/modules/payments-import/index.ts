@@ -1,6 +1,7 @@
-import { and, eq, gte } from "drizzle-orm";
+import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { payments } from "../../db/schema";
+import type { PaymentDay } from "../../sales/report";
 import type { PaymentRow, StoredPayment } from "./plan";
 
 export {
@@ -31,6 +32,19 @@ export async function storedPaymentsSince(
     .select({ paidAt: payments.paidAt, amount: payments.amount, sourceRef: payments.sourceRef })
     .from(payments)
     .where(and(eq(payments.businessId, businessId), gte(payments.paidAt, since)));
+}
+
+// Money in up to `now`, per WIB day: what the "uang masuk QRIS" metric and the recaps read (G10).
+// Read regardless of PAYMENTS_IMPORT_ENABLED, which only gates new imports.
+export async function paymentDays(db: Db, businessId: string, now: Date): Promise<PaymentDay[]> {
+  const day = sql<string>`to_char(${payments.paidAt} at time zone 'Asia/Jakarta', 'YYYY-MM-DD')`;
+
+  return db
+    .select({ date: day, amount: sql<number>`cast(sum(${payments.amount}) as integer)` })
+    .from(payments)
+    .where(and(eq(payments.businessId, businessId), lte(payments.paidAt, now)))
+    .groupBy(day)
+    .orderBy(asc(day));
 }
 
 export async function imageSeen(db: Db, businessId: string, imageSha256: string): Promise<boolean> {

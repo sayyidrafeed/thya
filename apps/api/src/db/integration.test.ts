@@ -7,11 +7,12 @@ import { recordTurn } from "../modules/traces";
 import { buildDemoSales } from "../sales/demo-shop";
 import { summarizeSales } from "../sales/report";
 import { loadSalesDataset, seedDemoSales } from "../sales/repository";
+import { computeMetric } from "../semantic/metrics";
 import { appendConceptEvents, loadConceptEvents } from "../semantic/repository";
 import { newTraceId } from "../trace";
 import type { Db } from "./client";
 import { runMigrations } from "./migrate";
-import { menuCosts, menuItems, transactions } from "./schema";
+import { menuCosts, menuItems, payments, transactions } from "./schema";
 import { freshTestDb, integration } from "./testing";
 
 const NOW = new Date("2026-10-25T14:00:00+07:00");
@@ -160,6 +161,65 @@ describe.if(integration)("postgres", () => {
       summarizeSales(before.records, before.menu, lastWeek),
     );
     expect(after.menu.find((menuItem) => menuItem.id === item!.id)?.cost).toBe(99_000);
+  });
+
+  test("profit from an estimated cost is flagged from the cost's date on", async () => {
+    const [item] = await db
+      .select({ id: menuItems.id })
+      .from(menuItems)
+      .where(eq(menuItems.name, "Croissant Butter"));
+
+    await db.insert(menuCosts).values({
+      menuItemId: item!.id,
+      amount: 10_000,
+      source: "estimate",
+      validFrom: "2026-10-21",
+    });
+
+    const dataset = await loadSalesDataset(db, businessId, NOW);
+
+    const profit = (range: { start: string; end: string }) =>
+      computeMetric({ ...dataset, requested: "gross_profit", range, previousRange: null });
+
+    expect(profit({ start: "2026-10-21", end: "2026-10-24" })).toMatchObject({ estimated: true });
+    expect(profit({ start: "2026-10-12", end: "2026-10-18" })).toMatchObject({ estimated: false });
+  });
+
+  test("payments are summed per WIB day, up to now", async () => {
+    await db.insert(payments).values(
+      (
+        [
+          ["2026-10-23T23:59:00+07:00", 10_000],
+          ["2026-10-24T00:01:00+07:00", 20_000],
+          ["2026-10-24T23:59:00+07:00", 30_000],
+          ["2026-10-25T13:59:00+07:00", 40_000],
+          ["2026-10-25T14:01:00+07:00", 50_000],
+        ] as const
+      ).map(([paidAt, amount]) => ({
+        businessId,
+        paidAt: new Date(paidAt),
+        amount,
+        method: "qris" as const,
+        source: "chat" as const,
+      })),
+    );
+
+    expect((await loadSalesDataset(db, businessId, NOW)).payments).toEqual([
+      { date: "2026-10-23", amount: 10_000 },
+      { date: "2026-10-24", amount: 50_000 },
+      { date: "2026-10-25", amount: 40_000 },
+    ]);
+  });
+
+  test("an explained QRIS concept can be stored (migration 0004)", async () => {
+    await appendConceptEvents(db, { businessId, traceId: newTraceId() }, [
+      { concept: "qris_in", kind: "explained" },
+    ]);
+
+    expect((await loadConceptEvents(db, businessId)).at(-1)).toEqual({
+      concept: "qris_in",
+      kind: "explained",
+    });
   });
 
   test("re-seeding keeps a price the owner changed", async () => {

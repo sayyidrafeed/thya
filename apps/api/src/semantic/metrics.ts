@@ -1,5 +1,12 @@
 import { formatCount, formatPercent, formatRupiah } from "../sales/format";
-import { summarizeSales, type DateRange, type MenuItem, type SaleRecord } from "../sales/report";
+import {
+  paymentsIn,
+  summarizeSales,
+  type DateRange,
+  type MenuItem,
+  type PaymentDay,
+  type SaleRecord,
+} from "../sales/report";
 import type { ConceptId } from "./concepts";
 
 // "profit" is the owner's generic "untung". Decision D2 resolves it to net profit once operating
@@ -12,6 +19,7 @@ export const METRIC_IDS = [
   "net_profit",
   "profit",
   "items_sold",
+  "qris_in",
 ] as const;
 
 export type RequestedMetric = (typeof METRIC_IDS)[number];
@@ -19,6 +27,9 @@ export type RequestedMetric = (typeof METRIC_IDS)[number];
 export type MetricId = Exclude<RequestedMetric, "profit">;
 
 export type SalesSummary = ReturnType<typeof summarizeSales>;
+
+// QRIS money in sits beside the sales totals, never inside them (G10, S9-AC8).
+export type MetricTotals = SalesSummary & { qrisIn: number };
 
 export type MetricResult =
   | {
@@ -29,8 +40,11 @@ export type MetricResult =
       change: string | null;
       // Direction of `change` after the same rounding, so "0%" is flat, not up.
       trend: "up" | "down" | "flat" | null;
-      current: SalesSummary;
-      previous: SalesSummary | null;
+      // Some figure here (value, previous value or change) rests on a menu cost the owner only
+      // guessed, so replies and recaps must call it "perkiraan" (semantic-education item 6).
+      estimated: boolean;
+      current: MetricTotals;
+      previous: MetricTotals | null;
     }
   | { status: "missing"; metric: MetricId; missing: ConceptId };
 
@@ -38,6 +52,7 @@ export type MetricQuery = {
   requested: RequestedMetric;
   menu: MenuItem[];
   records: SaleRecord[];
+  payments: PaymentDay[];
   range: DateRange;
   previousRange: DateRange | null;
 };
@@ -50,7 +65,17 @@ export const ANSWER_METRICS = METRIC_IDS.filter((id): id is MetricId => id !== "
 
 type ComputableMetric = Exclude<MetricId, "net_profit">;
 
-function amount(metric: ComputableMetric, summary: SalesSummary): number {
+// Metrics computed from menu costs; only these can inherit an estimate.
+const COST_BASED: ComputableMetric[] = ["cogs", "gross_profit", "gross_margin"];
+
+function totals(query: MetricQuery, range: DateRange): MetricTotals {
+  return {
+    ...summarizeSales(query.records, query.menu, range),
+    qrisIn: paymentsIn(query.payments, range),
+  };
+}
+
+function amount(metric: ComputableMetric, summary: MetricTotals): number {
   switch (metric) {
     case "revenue":
       return summary.revenue;
@@ -62,6 +87,8 @@ function amount(metric: ComputableMetric, summary: SalesSummary): number {
       return summary.grossMarginPct;
     case "items_sold":
       return summary.itemsSold;
+    case "qris_in":
+      return summary.qrisIn;
   }
 }
 
@@ -98,12 +125,8 @@ export function computeMetric(query: MetricQuery): MetricResult {
 
   if (metric === "net_profit") return { status: "missing", metric, missing: "operating_expense" };
 
-  const current = summarizeSales(query.records, query.menu, query.range);
-
-  const previous =
-    query.previousRange === null
-      ? null
-      : summarizeSales(query.records, query.menu, query.previousRange);
+  const current = totals(query, query.range);
+  const previous = query.previousRange === null ? null : totals(query, query.previousRange);
 
   const now = amount(metric, current);
 
@@ -114,6 +137,10 @@ export function computeMetric(query: MetricQuery): MetricResult {
   const before = comparable === null ? null : amount(metric, comparable);
   const zeroBase = before === 0 && metric !== "gross_margin";
 
+  const estimated =
+    COST_BASED.includes(metric) &&
+    (current.costEstimated || (comparable !== null && comparable.costEstimated));
+
   return {
     status: "ok",
     metric,
@@ -122,6 +149,7 @@ export function computeMetric(query: MetricQuery): MetricResult {
     ...(before === null || zeroBase
       ? { change: null, trend: null }
       : describeChange(metric, now, before)),
+    estimated,
     current,
     previous,
   };

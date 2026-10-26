@@ -126,7 +126,7 @@ export function createSalesTools(
   events: ConceptEvent[],
   gate: ToolGate = { exhausted: () => false },
 ) {
-  const { menu, records, today, dataStart } = dataset;
+  const { menu, records, payments, today, dataStart } = dataset;
 
   function run<T extends object>(name: SalesToolName, compute: () => T): ToolResult<T> {
     if (gate.exhausted(name)) return { status: "error", message: BUDGET_SPENT };
@@ -188,6 +188,7 @@ export function createSalesTools(
             requested,
             menu,
             records,
+            payments,
             range,
             previousRange: previous,
           });
@@ -211,6 +212,11 @@ export function createSalesTools(
                 : null,
             interpretedAs: interpretation(userTerm, metric),
             explanation,
+            // U5: the estimate rule rides on the result, not the prompt (semantic-education item 6).
+            estimateNote:
+              result.status === "ok" && result.estimated
+                ? 'Sebagian modal per porsi masih perkiraan. Sebut angka ini sebagai perkiraan, misalnya "laba kotor sekitar Rp… (perkiraan)".'
+                : null,
           };
         }),
     }),

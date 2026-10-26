@@ -33,6 +33,10 @@ export const TERMS: Term[] = [
   { phrase: "persen untung", concepts: ["gross_margin"], formal: false, locale: "id" },
   { phrase: "laku", concepts: ["items_sold"], formal: false, locale: "id" },
   { phrase: "terjual", concepts: ["items_sold"], formal: false, locale: "id" },
+  { phrase: "uang masuk qris", concepts: ["qris_in"], formal: true, locale: "id" },
+  { phrase: "qris", concepts: ["qris_in"], formal: false, locale: "id" },
+  { phrase: "uang qris", concepts: ["qris_in"], formal: false, locale: "id" },
+  { phrase: "pembayaran qris", concepts: ["qris_in"], formal: false, locale: "id" },
 ];
 
 export function normalizeTerm(phrase: string): string {

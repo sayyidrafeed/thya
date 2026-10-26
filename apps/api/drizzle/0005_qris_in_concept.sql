@@ -1,0 +1,1 @@
+ALTER TYPE "public"."concept_id" ADD VALUE 'qris_in';

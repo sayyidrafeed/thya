@@ -9,6 +9,7 @@ import { recordInbound } from "../modules/conversation";
 import { demoBusiness } from "../sales/demo-shop";
 import { summarizeSales } from "../sales/report";
 import { loadSalesDataset, seedDemoSales } from "../sales/repository";
+import { computeMetric } from "../semantic/metrics";
 import type { Db } from "./client";
 import { payments } from "./schema";
 import { freshTestDb, integration } from "./testing";
@@ -131,6 +132,12 @@ describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
     expect(summarizeSales(after.records, after.menu, yesterday).revenue).toBe(
       summarizeSales(before.records, before.menu, yesterday).revenue,
     );
+
+    // S9-AC8 (G10): "uang masuk QRIS kemarin" is the sum of the stored payments.
+    expect(
+      computeMetric({ ...after, requested: "qris_in", range: yesterday, previousRange: null }),
+    ).toMatchObject({ status: "ok", value: "Rp97.500" });
+    expect(before.payments).toEqual([]);
   });
 
   test("the same screenshot again adds nothing", async () => {

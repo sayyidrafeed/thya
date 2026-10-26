@@ -43,6 +43,7 @@ describe("summarizeSales", () => {
       grossMarginPct: 58.5,
       itemsSold: 25,
       days: 2,
+      costEstimated: false,
     });
   });
 

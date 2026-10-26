@@ -1,4 +1,11 @@
-import { addDays, jakartaDate, jakartaHours, type MenuItem, type SaleRecord } from "./report";
+import {
+  addDays,
+  jakartaDate,
+  jakartaHours,
+  type MenuItem,
+  type PaymentDay,
+  type SaleRecord,
+} from "./report";
 
 export const demoBusiness = {
   name: "Kopi Senja",
@@ -144,6 +151,7 @@ function fullDayQuantity(date: string, item: DemoMenuItem): number {
 export type SalesDataset = {
   menu: MenuItem[];
   records: SaleRecord[];
+  payments: PaymentDay[];
   today: string;
   dataStart: string;
   asOf: Date;
@@ -179,7 +187,7 @@ export function buildDemoSales(now: Date): SalesDataset {
     }
   }
 
-  return { menu: demoMenu, records, today, dataStart, asOf: now };
+  return { menu: demoMenu, records, payments: [], today, dataStart, asOf: now };
 }
 
 export type DemoHourlySale = { date: string; itemId: string; soldAt: Date; quantity: number };

@@ -2,13 +2,16 @@ import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { MenuCostArgs, SalesRecordArgs } from "../actions/kinds";
 import type { Db } from "../db/client";
 import { menuCosts, menuItems, transactions } from "../db/schema";
+import { paymentDays } from "../modules/payments-import";
 import { DEMO_HISTORY_DAYS, demoHourlySales, demoMenu, type SalesDataset } from "./demo-shop";
 import { addDays, jakartaDate, type MenuItem, type SaleRecord } from "./report";
 
 // Seed rows reach this far ahead, so the demo keeps "today" without a cron until after the final.
 const DEMO_SEED_DAYS_AHEAD = 30;
 
-type CostHistory = Map<string, { validFrom: string; amount: number }[]>;
+type Cost = { validFrom: string; amount: number; estimated: boolean };
+
+type CostHistory = Map<string, Cost[]>;
 
 async function loadMenu(db: Db, businessId: string, today: string) {
   const items = await db
@@ -28,6 +31,7 @@ async function loadMenu(db: Db, businessId: string, today: string) {
       menuItemId: menuCosts.menuItemId,
       validFrom: menuCosts.validFrom,
       amount: menuCosts.amount,
+      source: menuCosts.source,
     })
     .from(menuCosts)
     .innerJoin(menuItems, eq(menuItems.id, menuCosts.menuItemId))
@@ -36,12 +40,15 @@ async function loadMenu(db: Db, businessId: string, today: string) {
 
   const history: CostHistory = new Map();
 
-  for (const { menuItemId, validFrom, amount } of costs)
-    history.set(menuItemId, [...(history.get(menuItemId) ?? []), { validFrom, amount }]);
+  for (const { menuItemId, validFrom, amount, source } of costs)
+    history.set(menuItemId, [
+      ...(history.get(menuItemId) ?? []),
+      { validFrom, amount, estimated: source === "estimate" },
+    ]);
 
   const menu: MenuItem[] = items.map((item) => ({
     ...item,
-    cost: costOn(history, item.id, today),
+    cost: costOn(history, item.id, today).amount,
   }));
 
   return { menu, history };
@@ -49,13 +56,13 @@ async function loadMenu(db: Db, businessId: string, today: string) {
 
 // The cost per portion in force on `date`. Partial cost coverage (E10) arrives with HPP
 // onboarding; until then a sale without a known cost is an error, never a silent 0.
-function costOn(history: CostHistory, itemId: string, date: string): number {
+function costOn(history: CostHistory, itemId: string, date: string): Cost {
   const inForce = (history.get(itemId) ?? []).findLast((cost) => cost.validFrom <= date);
 
   if (inForce === undefined)
     throw new Error(`menu item ${itemId} has no cost per portion on ${date}`);
 
-  return inForce.amount;
+  return inForce;
 }
 
 // Sales up to `now`: hourly rows count once their hour has ended, rows without an hour count for
@@ -88,12 +95,20 @@ export async function loadSalesDataset(
     .groupBy(transactions.soldOn, transactions.menuItemId, transactions.unitPrice)
     .orderBy(asc(transactions.soldOn));
 
-  const records: SaleRecord[] = rows.map((row) => ({
-    ...row,
-    unitCost: costOn(history, row.itemId, row.date),
-  }));
+  const records: SaleRecord[] = rows.map((row) => {
+    const cost = costOn(history, row.itemId, row.date);
 
-  return { menu, records, today, dataStart: records[0]?.date ?? today, asOf: now };
+    return { ...row, unitCost: cost.amount, costEstimated: cost.estimated };
+  });
+
+  return {
+    menu,
+    records,
+    payments: await paymentDays(db, businessId, now),
+    today,
+    dataStart: records[0]?.date ?? today,
+    asOf: now,
+  };
 }
 
 export async function hasSales(db: Db, businessId: string): Promise<boolean> {
