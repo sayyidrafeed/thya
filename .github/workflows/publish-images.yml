@@ -85,3 +85,15 @@ jobs:
             exit 0
           fi
           curl --fail-with-body --silent --show-error -X POST "$WEBHOOK_URL"
+
+      # thya-worker runs the same api image with `bun src/worker.ts`, so it redeploys with api.
+      - name: Redeploy worker on Dokploy
+        if: matrix.app == 'api'
+        env:
+          WEBHOOK_URL: ${{ secrets.DOKPLOY_WORKER_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "Dokploy webhook not configured for worker; skipped."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error -X POST "$WEBHOOK_URL"
