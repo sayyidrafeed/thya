@@ -42,6 +42,7 @@ const CONCURRENCY = 2;
 function memoryDrafts() {
   let open: DraftRequest | null = null;
   const saved: DraftRequest[] = [];
+  const created: DraftRequest[] = [];
 
   const nothingOpen = {
     status: "none",
@@ -51,6 +52,7 @@ function memoryDrafts() {
   const port: DraftPort = {
     create: async (request) => {
       open = request;
+      created.push(request);
 
       return { draftId: crypto.randomUUID() };
     },
@@ -71,7 +73,7 @@ function memoryDrafts() {
     },
   };
 
-  return { port, saved };
+  return { port, saved, created };
 }
 
 export type Trial = {
@@ -188,7 +190,7 @@ async function runTrial(testCase: EvalCase, trial: number): Promise<Trial> {
       turns,
       await expectedFacts(testCase),
       promptFacts(business, EVAL_NOW),
-      drafts.saved.length,
+      { created: drafts.created.length, saved: drafts.saved.length },
     );
 
     return result(null, grades);

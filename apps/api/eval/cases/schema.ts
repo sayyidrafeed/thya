@@ -52,6 +52,8 @@ const evalCase = z.object({
     maxLines: z.number().int().positive().optional(),
     // G4 state: how many drafts were executed by the end of the conversation.
     saved: z.number().int().nonnegative().optional(),
+    // Drafts prepared at all; a tool that rejects ambiguous input may still be called (U5).
+    drafted: z.number().int().nonnegative().optional(),
     // Graded on every turn: tool names that must never run in this conversation.
     forbiddenTools: z.array(z.instanceof(RegExp)).optional(),
     // Graded on every turn but the last: e.g. no confirm before the owner said "ya".

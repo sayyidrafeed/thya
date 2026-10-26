@@ -40,7 +40,7 @@ export const featureCases: EvalCaseInput[] = [
     suite: "capability",
     category: "tool_choice",
     turns: ["ingetin aku belanja bahan tiap hari jam 6"],
-    expect: { forbiddenTools: [SCHEDULE_TOOL], mustMatch: [/pagi|sore|malam/i, /\?/] },
+    expect: { drafted: 0, mustMatch: [/pagi|sore|malam/i, /\?/] },
   },
   {
     id: "schedule-reminder-weekly",

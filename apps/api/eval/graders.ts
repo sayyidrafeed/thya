@@ -91,7 +91,7 @@ export function gradeConversation(
   turns: Turn[],
   facts: { value: string; near: RegExp }[],
   promptFacts: string[],
-  saved: number,
+  drafts: { created: number; saved: number },
 ): Grade[] {
   const last = turns.at(-1);
 
@@ -102,13 +102,14 @@ export function gradeConversation(
   const evidence = [
     ...promptFacts,
     ...turns.flatMap((turn) => [
-      turn.user,
       ...turn.calls.map((call) => JSON.stringify(call.args)),
       ...turn.toolOutputs.map((output) => JSON.stringify(output)),
     ]),
   ];
 
-  const ungrounded = turns.flatMap((turn) => ungroundedNumbers(turn.reply, evidence));
+  // Same split as runtime: owner figures ground a reply unless it repeats them to deny them.
+  const ownerSaid = turns.map((turn) => turn.user);
+  const ungrounded = turns.flatMap((turn) => ungroundedNumbers(turn.reply, evidence, ownerSaid));
 
   return [
     ...gradeTools(expect, turns),
@@ -135,8 +136,17 @@ export function gradeConversation(
       : [
           {
             check: `${expect.saved} draft(s) saved`,
-            pass: saved === expect.saved,
-            detail: String(saved),
+            pass: drafts.saved === expect.saved,
+            detail: String(drafts.saved),
+          },
+        ]),
+    ...(expect.drafted === undefined
+      ? []
+      : [
+          {
+            check: `${expect.drafted} draft(s) created`,
+            pass: drafts.created === expect.drafted,
+            detail: String(drafts.created),
           },
         ]),
     {
