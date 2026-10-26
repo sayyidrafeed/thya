@@ -1,3 +1,4 @@
+import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
 
 const MISSING_KEY =
@@ -11,8 +12,8 @@ const WHATSAPP_KEYS = [
   "WHATSAPP_VERIFY_TOKEN",
 ] as const;
 
-const envSchema = z
-  .object({
+export const env = createEnv({
+  server: {
     NETRA_API_KEY: z.string({ error: MISSING_KEY }).min(1, MISSING_KEY),
     NETRA_BASE_URL: z.url().default("https://api.netraruntime.com/v1"),
     NETRA_MODEL: z.string().min(1).default("deepseek/deepseek-v4.1-flash"),
@@ -50,26 +51,32 @@ const envSchema = z
       .string()
       .regex(/^v\d+\.\d+$/)
       .default("v23.0"),
-  })
-  .superRefine((value, ctx) => {
-    const missing = WHATSAPP_KEYS.filter((key) => !value[key]);
+  },
+  runtimeEnv: process.env,
+  emptyStringAsUndefined: true,
+  createFinalSchema: (serverVars) =>
+    z.object(serverVars).superRefine((value, ctx) => {
+      const missing = WHATSAPP_KEYS.filter((key) => !value[key]);
 
-    if (missing.length === 0 || missing.length === WHATSAPP_KEYS.length) return;
+      if (missing.length === 0 || missing.length === WHATSAPP_KEYS.length) return;
 
-    ctx.addIssue({
-      code: "custom",
-      message: `WhatsApp baru terisi sebagian: ${missing.join(", ")} belum diisi. Isi keempatnya untuk menyalakan kanal, atau kosongkan semuanya untuk mematikannya.`,
+      ctx.addIssue({
+        code: "custom",
+        message: `WhatsApp baru terisi sebagian: ${missing.join(", ")} belum diisi. Isi keempatnya untuk menyalakan kanal, atau kosongkan semuanya untuk mematikannya.`,
+      });
+    }),
+  onValidationError: (issues) => {
+    const lines = issues.map((issue) => {
+      // Zod reports top-level env keys as plain path keys.
+      const path = issue.path?.map(String).join(".");
+
+      return path ? `✖ ${issue.message}\n  → at ${path}` : `✖ ${issue.message}`;
     });
-  });
 
-const parsed = envSchema.safeParse(process.env);
-
-if (!parsed.success) {
-  console.error(`Konfigurasi env tidak valid:\n${z.prettifyError(parsed.error)}`);
-  process.exit(1);
-}
-
-export const env = parsed.data;
+    console.error(`Konfigurasi env tidak valid:\n${lines.join("\n")}`);
+    process.exit(1);
+  },
+});
 
 function whatsappConfig() {
   const {
