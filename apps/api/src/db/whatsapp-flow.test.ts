@@ -205,6 +205,27 @@ describe.if(integration)("whatsapp flow", () => {
     ]);
   });
 
+  test("an emoji reaction is marked handled and gets no reply", async () => {
+    const reaction = {
+      from: OWNER,
+      id: "wamid.react",
+      timestamp: String(NOW.getTime() / 1000),
+      type: "reaction",
+      reaction: { message_id: "wamid.out.1", emoji: "👍" },
+    };
+
+    await deliver(webhookBody([reaction]));
+
+    const run = deps();
+    await handleAgentTurn(run, OWNER);
+
+    expect(run.graph.sent()).toEqual([]);
+
+    const [row] = await db.select().from(inboundMessages);
+
+    expect(row?.processedAt).not.toBeNull();
+  });
+
   test("a bad signature stores nothing", async () => {
     const response = await deliver(webhookBody([textMessage("wamid.bad", "hai")]), "sha256=00");
 

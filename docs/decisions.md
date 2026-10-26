@@ -173,3 +173,9 @@ Keputusan di bawah diambil session engine saat Rafee tidur, supaya pekerjaan tid
 - **Pesan interim:** giliran yang belum selesai setelah 15 detik mengirim "Sebentar ya Kak, Thya masih menghitung." lewat outbox, lalu typing indicator dinyalakan lagi. Pemilik: Rafee.
 - **Rate limit `/demo/chat`:** 20 request per menit per IP (alamat pertama di `x-forwarded-for`), disimpan di memori. Request ke-21 mendapat 429. Pemilik: Rafee.
 - **Pesan basi (#8), diputuskan Rafee:** pesan masuk yang sampai lebih dari 6 jam setelah dikirim tidak dijalankan ke model dan tidak menulis data. Thya membalas satu kalimat tetap yang meminta pemilik mengirim ulang kalau masih perlu. Pesan baru yang datang dalam batch yang sama tetap dijawab normal. Alasan: Meta bisa mengirim ulang webhook sampai 7 hari, jadi pesan lama yang diproses diam-diam bisa mencatat penjualan basi. Pemilik: Rafee.
+
+## 2026-10-26 (P2 WhatsApp, dikerjakan agent untuk Rafee, belum direview)
+
+- **Jam ambigu dijawab dengan tombol.** Saat `createSchedule` menolak jam yang ambigu (U5), hasil tool membawa dua pilihan dengan kata-kata pemilik, misalnya "Jam 6 pagi" / "Jam 6 sore". Jam 15–18 disebut "sore". Kalau giliran berakhir dengan pertanyaan itu, kanal WhatsApp mengirim balasan model sebagai reply button. Tap pada tombol masuk ke model sebagai teks judulnya. Demo web belum menampilkan tombol ini. Pemilik: Rafee.
+- **Angka contoh di dalam kutip tidak dianggap klaim.** Cek angka Q2 melewati angka hitungan kecil di dalam frasa yang dikutip ("tadi laku 20 kopi susu"). Kutipan yang memuat Rp, persen, angka ribuan, atau satuan uang tetap dicek. Fungsi ini juga dipakai grader eval, jadi grader ikut berubah. Pemilik: Rafee.
+- **Reaksi emoji diabaikan:** batch yang isinya hanya reaksi ditandai selesai tanpa balasan. Stiker, lokasi, dan voice note tetap dibalas "baru bisa membaca pesan teks". Pemilik: Rafee.

@@ -69,6 +69,20 @@ describe("ungroundedNumbers", () => {
     );
   });
 
+  test("lets a quoted example phrase carry small counts, but still checks money inside quotes", () => {
+    expect(
+      ungroundedNumbers('Ketik saja di sini, misal "tadi laku 20 kopi susu, 3 americano".', []),
+    ).toEqual([]);
+    expect(ungroundedNumbers("Contoh: “jual 5 es teh”.", [])).toEqual([]);
+    expect(ungroundedNumbers('Omzetnya "Rp5.000.000" kemarin.', []).map((n) => n.text)).toEqual([
+      "5.000.000",
+    ]);
+    expect(ungroundedNumbers('Naik "12%" dari minggu lalu.', []).map((n) => n.text)).toEqual([
+      "12",
+    ]);
+    expect(ungroundedNumbers("Tadi laku 20 kopi susu.", []).map((n) => n.text)).toEqual(["20"]);
+  });
+
   test("accepts times and numbers that the owner or the business profile supplied", () => {
     const evidence = ["tadi laku 20 kopi susu", "buka pukul 07.00-22.00 WIB"];
 

@@ -200,13 +200,42 @@ const DAY_PART = /pagi|siang|sore|petang|malam|subuh|dini hari/i;
 // "Jam 6" could be 06:00 or 18:00. Code checks the owner's words instead of trusting the model's
 // guess (eval case schedule-ambiguous-hour, decision U5: the rule lives in the tool).
 export function ambiguousHour(words: string | null): boolean {
-  if (words === null || DAY_PART.test(words)) return false;
+  return ambiguousTime(words) !== null;
+}
 
-  return [...words.matchAll(/\b(\d{1,2})(?:[.:]\d{2})?\b/g)].some(([, hour = ""]) => {
+function ambiguousTime(words: string | null) {
+  if (words === null || DAY_PART.test(words)) return null;
+
+  for (const [time, hour = ""] of words.matchAll(/\b(\d{1,2})(?:[.:]\d{2})?\b/g)) {
     const value = Number(hour);
 
-    return value >= 1 && value <= 12 && !hour.startsWith("0");
-  });
+    if (value >= 1 && value <= 12 && !hour.startsWith("0")) return { time, hour: value };
+  }
+
+  return null;
+}
+
+function dayPart(hour24: number) {
+  if (hour24 >= 4 && hour24 <= 10) return "pagi";
+
+  if (hour24 >= 11 && hour24 <= 14) return "siang";
+
+  // "Jam 6 sore" is how owners say 18:00.
+  if (hour24 >= 15 && hour24 <= 18) return "sore";
+
+  return "malam";
+}
+
+// The two readings of an ambiguous hour, in the owner's words, for the channel's reply buttons:
+// "jam 6" gives "Jam 6 pagi" and "Jam 6 sore"; a tap comes back as that text.
+export function hourChoices(words: string | null): string[] | null {
+  const ambiguous = ambiguousTime(words);
+
+  if (ambiguous === null) return null;
+
+  const morning = ambiguous.hour % 12;
+
+  return [morning, morning + 12].map((hour24) => `Jam ${ambiguous.time} ${dayPart(hour24)}`);
 }
 
 const ESTIMATE_SHARE = { half: 2, third: 3, quarter: 4 } as const;
@@ -275,10 +304,13 @@ export function createWriteTools(dataset: SalesDataset, port: DraftPort | null) 
   async function scheduleDraft(input: z.infer<typeof createScheduleInputSchema>) {
     if (port === null) return { status: "error" as const, message: NOT_READY };
 
-    if (ambiguousHour(input.timeWords))
+    const choices = hourChoices(input.timeWords);
+
+    if (choices !== null)
       return {
         status: "error" as const,
-        message: `"${input.timeWords}" belum jelas pagi atau malam. Tanya Kakak dulu, jangan menebak.`,
+        message: `"${input.timeWords}" belum jelas pagi atau malam. Tanya Kakak dulu, jangan menebak; Kakak juga dapat tombol ${choices.join(" / ")}.`,
+        choices,
       };
 
     const parsed = scheduleSpecSchema.safeParse(input);

@@ -29,6 +29,11 @@ const PLAIN_NUMBER = /(?<![\d.,])\d+(?:\.\d+)?(?![\d.,]*\d)/g;
 const THOUSANDS = /^\d{1,3}(\.\d{3})+$/;
 const LIST_MARKER = /^\s*\d+[.)]\s/gm;
 
+// A quoted phrase for the owner to type ("tadi laku 5 kopi susu") is an example, not a claim. Only
+// small counts qualify: a quote with money, a percentage or a grouped amount is still checked.
+const QUOTED = /["“]([^"”\n]{1,80})["”]/g;
+const CLAIM_IN_QUOTE = /rp|%|\d{1,3}(?:\.\d{3})+|\d\s?(?:rb|ribu|k|jt|juta|miliar|M)\b/i;
+
 function readNumber(match: RegExpExecArray): Reading {
   const [, whole = "", fraction, unit] = match;
   const scale = unit ? (SCALES.get(unit) ?? 1) : 1;
@@ -96,8 +101,13 @@ export function ungroundedNumbers(reply: string, evidence: readonly string[]): U
   const knownValues = evidenceValues(evidence);
   const knownTimes = evidence.flatMap(timesIn);
   const ungrounded: UngroundedNumber[] = [];
-  // Blank out list markers and times so the number pass never reads "15.00" as fifteen.
-  let rest = reply.replace(LIST_MARKER, (marker) => " ".repeat(marker.length));
+
+  // Blank out list markers, example phrases and times, so "15.00" never reads as fifteen.
+  let rest = reply
+    .replace(LIST_MARKER, (marker) => " ".repeat(marker.length))
+    .replace(QUOTED, (quote, inner: string) =>
+      CLAIM_IN_QUOTE.test(inner) ? quote : " ".repeat(quote.length),
+    );
 
   for (const match of rest.matchAll(TIME)) {
     const [text, hour, minute] = match;

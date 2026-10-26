@@ -8,7 +8,7 @@ import { handleAgentTurn } from "../jobs/agent-turn";
 import { fireDueSchedules, type Templates } from "../jobs/schedule-fire";
 import { loadAttachment } from "../modules/attachments";
 import { createPhoneBusiness } from "../modules/business";
-import { pendingOutbound, recordInbound } from "../modules/conversation";
+import { loadHistory, pendingOutbound, recordInbound } from "../modules/conversation";
 import { createSchedule } from "../modules/schedules";
 import { demoBusiness } from "../sales/demo-shop";
 import { seedDemoSales } from "../sales/repository";
@@ -86,6 +86,73 @@ describe.if(integration)("schedules", () => {
 
     return { flushed, pending: await pendingOutbound(db, OWNER) };
   }
+
+  test("an ambiguous hour comes back as a question with Pagi/Sore buttons, and a tap answers it", async () => {
+    const question = await say(
+      "tiap hari kirim rekap jam 6",
+      [
+        { tool: "createSchedule", input: { ...dailyRecap, timeWords: "jam 6" } },
+        { text: "Jam 6 pagi atau sore, Kak?" },
+      ],
+      NOW,
+    );
+
+    const [asked] = question.sent();
+
+    expect(asked.interactive.body.text).toBe("Jam 6 pagi atau sore, Kak?");
+    expect(
+      asked.interactive.action.buttons.map(
+        (button: { reply: { title: string } }) => button.reply.title,
+      ),
+    ).toEqual(["Jam 6 pagi", "Jam 6 sore"]);
+
+    const tap = {
+      from: OWNER,
+      id: `wamid.s${++wamid}`,
+      timestamp: "1",
+      type: "interactive",
+      interactive: {
+        type: "button_reply",
+        button_reply: asked.interactive.action.buttons[1].reply,
+      },
+    };
+
+    await recordInbound(db, [
+      { wamid: tap.id, phone: OWNER, type: "interactive", payload: tap, receivedAt: NOW },
+    ]);
+
+    const confirm = fakeGraph();
+
+    await handleAgentTurn(
+      {
+        db,
+        model: scriptedModel([
+          {
+            tool: "createSchedule",
+            input: { ...dailyRecap, time: "18:00", timeWords: "jam 6 sore" },
+          },
+          { text: "Cek dulu ya Kak." },
+        ]),
+        delivery: {
+          db,
+          client: createWhatsAppClient(config, confirm.fetcher),
+          loadImage: async () => null,
+        },
+        now: () => NOW,
+        paymentsImport: false,
+      },
+      OWNER,
+    );
+
+    const history = await loadHistory(db, businessId);
+
+    expect(
+      history.some((message) => message.role === "user" && message.content === "Jam 6 sore"),
+    ).toBe(true);
+    expect(
+      confirm.sent().find((body) => body.type === "interactive")?.interactive.body.text,
+    ).toContain("jam 18.00 WIB");
+  });
 
   test("a schedule made in chat waits for Ya, then runs at 21:00 WIB (S4-AC1, AC2)", async () => {
     const graph = await say(

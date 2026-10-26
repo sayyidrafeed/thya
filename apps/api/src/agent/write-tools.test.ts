@@ -3,7 +3,7 @@ import type { DraftPort, DraftRequest } from "../actions/kinds";
 import { buildDemoSales, demoBusiness } from "../sales/demo-shop";
 import { runTurn } from "./run-turn";
 import { scriptedModel } from "./testing";
-import { ambiguousHour, createWriteTools, matchMenu } from "./write-tools";
+import { ambiguousHour, createWriteTools, hourChoices, matchMenu } from "./write-tools";
 
 const NOW = new Date("2026-10-25T14:00:00+07:00");
 const dataset = buildDemoSales(NOW);
@@ -191,5 +191,12 @@ describe("ambiguousHour (schedule-ambiguous-hour)", () => {
     expect(ambiguousHour("jam 21.00")).toBe(false);
     expect(ambiguousHour("jam 06:00")).toBe(false);
     expect(ambiguousHour(null)).toBe(false);
+  });
+
+  test("offers both readings of the hour in the owner's words, as button titles", () => {
+    expect(hourChoices("jam 6")).toEqual(["Jam 6 pagi", "Jam 6 sore"]);
+    expect(hourChoices("tiap jam 9.30")).toEqual(["Jam 9.30 pagi", "Jam 9.30 malam"]);
+    expect(hourChoices("jam 12")).toEqual(["Jam 12 malam", "Jam 12 siang"]);
+    expect(hourChoices("jam 6 sore")).toBeNull();
   });
 });

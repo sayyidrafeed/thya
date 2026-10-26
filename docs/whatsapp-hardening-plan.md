@@ -59,6 +59,8 @@ Risiko yang diterima: kalau proses mati tepat setelah Meta menerima pesan tapi s
 
 ### P2: fitur yang muncul dari kegagalan
 
+Status 26 Okt: #12, #14, dan #15 sudah dikerjakan di kode dan diuji dengan model tiruan. #13 (STT) masih menunggu keputusan apakah voice note masuk demo. #12 dan #16 baru terbukti untuk model sungguhan setelah eval dijalankan dengan Netra.
+
 | # | Kegagalan nyata | Usulan fitur | Bukti selesai |
 |---|---|---|---|
 | 12 | `schedule-ambiguous-hour` 0/3: "jam 6" langsung dijadwalkan jam 06.00 | Tanyakan balik dengan **reply button** Pagi/Sore/Malam. Ini pas dengan batas Meta (maksimal 3 tombol, 20 karakter), dan tool menolak jam yang ambigu (U5). Perbaikan di 8be86a7 belum terbukti di run eval | Kasus eval lulus 3/3 dan payload tombol tervalidasi oleh test |

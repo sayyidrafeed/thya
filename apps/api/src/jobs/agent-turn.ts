@@ -1,7 +1,7 @@
 import type { LanguageModel, ModelMessage } from "ai";
 import { attachmentPort, cancelOpenDraft, dbDraftPort, runDraft } from "../actions";
 import { renderSummary, runTurn, type TurnDraft, type TurnResult } from "../agent";
-import { CAPTION_LIMIT, TEXT_LIMIT } from "../channels/whatsapp/client";
+import { BUTTON_TITLE_LIMIT, CAPTION_LIMIT, TEXT_LIMIT } from "../channels/whatsapp/client";
 import { deliverPending, type Delivery } from "../channels/whatsapp/deliver";
 import { toWhatsAppText, splitText } from "../channels/whatsapp/format";
 import { messageSchema, readContent } from "../channels/whatsapp/inbound";
@@ -86,6 +86,9 @@ function textOutbound(to: string, key: string, text: string): Outbound[] {
 function replyOutbound(to: string, key: string, turn: TurnResult): Outbound[] {
   const [picture] = turn.attachments;
 
+  if (picture === undefined && turn.choices !== null && turn.draft === null)
+    return choicesOutbound(to, key, turn.reply, turn.choices);
+
   if (picture === undefined) return textOutbound(to, key, turn.reply);
 
   const [caption = "", ...rest] = splitText(turn.reply, CAPTION_LIMIT);
@@ -94,6 +97,26 @@ function replyOutbound(to: string, key: string, turn: TurnResult): Outbound[] {
     { key: `${key}:image`, payload: { type: "image", to, attachmentId: picture.id, caption } },
     ...(rest.length > 0 ? textOutbound(to, `${key}:rest`, rest.join("\n\n")) : []),
   ];
+}
+
+// A question with tappable answers: the reply itself carries the buttons when it fits their body.
+function choicesOutbound(to: string, key: string, reply: string, choices: string[]): Outbound[] {
+  const fits = reply.length <= CAPTION_LIMIT;
+
+  const buttons: Outbound = {
+    key: `${key}:choices`,
+    payload: {
+      type: "buttons",
+      to,
+      body: fits ? reply : "Pilih salah satu ya, Kak:",
+      buttons: choices.map((title, index) => ({
+        id: `choice:${index}`,
+        title: title.slice(0, BUTTON_TITLE_LIMIT),
+      })),
+    },
+  };
+
+  return fits ? [buttons] : [...textOutbound(to, key, reply), buttons];
 }
 
 function draftCard(to: string, draft: TurnDraft): Outbound {
@@ -176,7 +199,7 @@ async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundR
 
     const [, draftId, action] = DRAFT_BUTTON.exec(content.id) ?? [];
 
-    // A button Thya did not make reads as the words on it.
+    // Any other button (an answer choice, or one Thya did not make) reads as the words on it.
     if (draftId === undefined || action === undefined) {
       batch.texts.push(content.title);
       continue;
@@ -440,6 +463,19 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
   };
 
   if (business === null) return reply(`unregistered:${phone}:${day}`, REPLIES.unregistered);
+
+  // An emoji on one of Thya's messages asks for nothing; answering it with "teks saja" is noise.
+  if (current.every((row) => row.type === "reaction")) {
+    await commitTurn(db, {
+      businessId: business.id,
+      traceId: newTraceId(),
+      wamids,
+      history: [],
+      outbound: [],
+    });
+
+    return;
+  }
 
   const recent = await countInboundSince(db, phone, new Date(now.getTime() - RATE_LIMIT.windowMs));
   const minute = Math.floor(now.getTime() / RATE_LIMIT.windowMs);

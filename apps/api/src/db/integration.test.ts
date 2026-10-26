@@ -131,6 +131,7 @@ describe.if(integration)("postgres", () => {
         conceptEvents: [],
         check: { action: "none", ungrounded: [], attempts: 1 },
         draft: null,
+        choices: null,
         promptHash: "test",
         usage: { inputTokens: 10, cachedInputTokens: 5, outputTokens: 3 },
       },

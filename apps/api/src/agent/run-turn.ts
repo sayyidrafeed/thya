@@ -69,6 +69,8 @@ export type TurnResult = {
   conceptEvents: ConceptEvent[];
   check: { action: TurnAction; ungrounded: UngroundedNumber[]; attempts: number };
   draft: TurnDraft | null;
+  // Short answers the owner can tap instead of typing, from the last tool call (an ambiguous hour).
+  choices: string[] | null;
   // Decision U1: SHA-256 of the system prompt plus every tool's name, description and input schema.
   promptHash: string;
   usage: { inputTokens: number; cachedInputTokens: number; outputTokens: number };
@@ -235,6 +237,15 @@ function lastDraft(toolCalls: TurnToolCall[]): TurnDraft | null {
   return drafts.at(-1) ?? null;
 }
 
+const choicesOutputSchema = z.object({ choices: z.array(z.string()).min(2).max(3) });
+
+// Only when the turn ended on that question: a later call that went through means it was answered.
+function lastChoices(toolCalls: TurnToolCall[]): string[] | null {
+  const parsed = choicesOutputSchema.safeParse(toolCalls.at(-1)?.output);
+
+  return parsed.success ? parsed.data.choices : null;
+}
+
 function promptHash(input: TurnInput): string {
   const tools = {
     ...createSalesTools(input.dataset, []),
@@ -277,6 +288,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
       conceptEvents: chosen.conceptEvents,
       check: { action, ungrounded, attempts: tries },
       draft: lastDraft(chosen.toolCalls),
+      choices: lastChoices(chosen.toolCalls),
       promptHash: promptHash(input),
       usage: sumUsage(attempts),
     };
