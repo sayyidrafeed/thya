@@ -1,10 +1,10 @@
 import { Elysia } from "elysia";
 import type { PgBoss } from "pg-boss";
-import { inboundMessages, webhookSchema } from "../channels/whatsapp/inbound";
+import { deliveryStatuses, inboundMessages, webhookSchema } from "../channels/whatsapp/inbound";
 import { verifySignature } from "../channels/whatsapp/signature";
 import type { Db } from "../db/client";
 import { enqueueAgentTurn } from "../jobs";
-import { recordInbound } from "../modules/conversation";
+import { recordDeliveryStatuses, recordInbound } from "../modules/conversation";
 
 export type WebhookConfig = { appSecret: string; verifyToken: string; phoneNumberId: string };
 
@@ -41,6 +41,12 @@ export function whatsappWebhook(db: Db, boss: PgBoss, config: WebhookConfig) {
         if (!parsed.success) return { ok: true };
 
         const messages = inboundMessages(parsed.data, config.phoneNumberId);
+        const statuses = deliveryStatuses(parsed.data, config.phoneNumberId);
+
+        await recordDeliveryStatuses(db, statuses);
+
+        for (const failed of statuses.filter((status) => status.status === "failed"))
+          console.error(`whatsapp delivery failed: ${failed.error} (${failed.wamid})`);
 
         await recordInbound(
           db,

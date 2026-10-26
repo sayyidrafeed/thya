@@ -6,6 +6,7 @@ import { runMigrations } from "./db/migrate";
 import { env, whatsapp } from "./env";
 import { demoChatStream } from "./http/demo";
 import { healthRoute } from "./http/health";
+import { clientAddress, createRateLimiter } from "./http/rate-limit";
 import { whatsappWebhook } from "./http/whatsapp";
 import { loadDemoAttachment } from "./modules/attachments";
 import { checkHealth, STALLED_AFTER_SECONDS } from "./modules/health";
@@ -54,6 +55,9 @@ async function warnIfQueueStalled() {
 if (whatsapp && boss)
   setInterval(() => void warnIfQueueStalled(), (STALLED_AFTER_SECONDS + 120) * 1000);
 
+// Harness §8: every demo message is a paid model call, and the endpoint is public.
+const allowDemoChat = createRateLimiter({ limit: 20, windowMs: 60_000 });
+
 const demoChatBody = z.object({
   messages: z.array(z.unknown()).min(1).max(100),
 });
@@ -93,7 +97,12 @@ export const app = new Elysia({ serve: { maxRequestBodySize: 256 * 1024 } })
   .use(whatsapp && boss ? whatsappWebhook(db, boss, whatsapp) : new Elysia())
   .post(
     "/demo/chat",
-    async ({ body, request, status }) => {
+    async ({ body, request, server, status }) => {
+      if (!allowDemoChat(clientAddress(request, server?.requestIP(request)?.address ?? null)))
+        return status(429, {
+          error: "Pesannya terlalu cepat, Kak. Tunggu sebentar lalu coba lagi.",
+        });
+
       const validated = await safeValidateUIMessages({ messages: body.messages });
 
       if (!validated.success) return status(400, { error: "Format messages tidak valid." });
@@ -116,6 +125,12 @@ export const app = new Elysia({ serve: { maxRequestBodySize: 256 * 1024 } })
 console.log(
   `Thya API jalan di http://localhost:${app.server?.port} (WhatsApp ${whatsapp && boss ? "aktif" : "nonaktif"}, job ${env.JOBS_IN_SERVER ? "di server" : "di worker"}).`,
 );
+
+// A deploy sends SIGTERM: pg-boss stops fetching and lets running turns finish (up to its own
+// timeout); a turn cut off anyway stays unprocessed and is retried once its job expires.
+process.on("SIGTERM", () => {
+  void (boss?.stop() ?? Promise.resolve()).finally(() => process.exit(0));
+});
 
 // After listen, so the health check passes while it runs. The demo's rows reach 30 days past each
 // deploy, which keeps "today" moving without a cron; the insert is idempotent.

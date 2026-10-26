@@ -43,6 +43,8 @@ Peringkatnya mengikuti risiko demo yang dikurangi. P0 harus beres sebelum gladi.
 
 ### P1: failure mode yang bisa muncul saat demo
 
+Status 26 Okt: #5 sampai #11 sudah dikerjakan di kode dan diuji, tapi belum ter-deploy (lihat `docs/decisions.md`). Untuk #8, pesan yang telat lebih dari 6 jam dibalas satu kalimat tetap yang meminta kirim ulang.
+
 | # | Masalah | Bukti | Usulan | Bukti selesai |
 |---|---|---|---|---|
 | 5 | Satu nomor bisa terkunci permanen | (Inferred) Di pg-boss 12.37.1, index unik `key_strict_fifo` mencakup state `failed`. Kalau percobaan terakhir kena `expireInSeconds: 180`, job jadi `failed`, padahal kode hanya menelan error yang dilempar (`jobs/index.ts:102`) | Pasang batas waktu total per job di bawah 180 detik, dan bersihkan atau laporkan job `failed` di queue ini | Test yang mensimulasikan expire di percobaan terakhir: pesan berikutnya dari nomor itu tetap dibalas |

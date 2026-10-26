@@ -1,5 +1,18 @@
 import type { ModelMessage } from "ai";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, max, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  max,
+  sql,
+  type AnyColumn,
+} from "drizzle-orm";
 import { z } from "zod";
 import { repairHistory, summarySchema, type ConversationSummary } from "../../agent";
 import type { Db } from "../../db/client";
@@ -278,6 +291,35 @@ export async function markOutbound(
         : { status: "failed", error: result.error },
     )
     .where(eq(outboundMessages.id, id));
+}
+
+export type DeliveryStatus = {
+  wamid: string;
+  status: "delivered" | "read" | "failed";
+  at: Date;
+  error: string | null;
+};
+
+// Redelivered or out-of-order statuses are harmless: each timestamp is kept once, and a failure
+// stays a failure.
+export async function recordDeliveryStatuses(db: Db, statuses: DeliveryStatus[]) {
+  for (const { wamid, status, at, error } of statuses) {
+    // Raw sql gets no column type from drizzle, so the time goes in as an ISO string.
+    const firstAt = (column: AnyColumn) =>
+      sql`coalesce(${column}, ${at.toISOString()}::timestamptz)`;
+
+    const set =
+      status === "failed"
+        ? { status: "failed" as const, error: error ?? "failed after send" }
+        : status === "delivered"
+          ? { deliveredAt: firstAt(outboundMessages.deliveredAt) }
+          : {
+              deliveredAt: firstAt(outboundMessages.deliveredAt),
+              readAt: firstAt(outboundMessages.readAt),
+            };
+
+    await db.update(outboundMessages).set(set).where(eq(outboundMessages.wamid, wamid));
+  }
 }
 
 export async function countOutbound(db: Db, traceId: string) {

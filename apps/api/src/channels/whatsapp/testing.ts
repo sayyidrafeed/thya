@@ -26,6 +26,35 @@ export function webhookBody(messages: WebhookMessage[]) {
   });
 }
 
+// Meta's status webhook: one entry per fate of a message Thya sent.
+export function statusBody(
+  statuses: {
+    id: string;
+    status: string;
+    timestamp: string;
+    errors?: { code: number; title: string }[];
+  }[],
+) {
+  return JSON.stringify({
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "waba",
+        changes: [
+          {
+            field: "messages",
+            value: {
+              messaging_product: "whatsapp",
+              metadata: { display_phone_number: "15550000000", phone_number_id: "PNID" },
+              statuses: statuses.map((status) => ({ ...status, recipient_id: "6281200000001" })),
+            },
+          },
+        ],
+      },
+    ],
+  });
+}
+
 export const signWebhook = (body: string, secret: string) =>
   `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 

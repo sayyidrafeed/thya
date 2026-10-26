@@ -36,7 +36,15 @@ export type AgentTurnDeps = {
   paymentsImport: boolean;
   // Asks for a compaction job once the thread passes its threshold (B1); none in tests.
   compact?: (businessId: string) => Promise<void>;
+  // How long a turn may think before the owner gets a "still working" line; default INTERIM_AFTER_MS.
+  interimAfterMs?: number;
 };
+
+// Meta redelivers a webhook for up to 7 days; anything older than this is answered by code.
+export const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+
+// Harness §7: Meta's typing indicator stops after 25 s, and a slow month ranking takes about 20.
+export const INTERIM_AFTER_MS = 15_000;
 
 // What the thread records for a screenshot: never its content (A8), only that it came.
 const IMAGE_NOTE = "[Pemilik mengirim gambar]";
@@ -57,6 +65,9 @@ export const REPLIES = {
   unsupported:
     "Maaf Kak, Thya baru bisa membaca pesan teks. Coba ketik pertanyaannya ya, misalnya: omzet kemarin berapa?",
   failed: "Maaf Kak, Thya lagi gangguan. Coba kirim ulang sebentar lagi ya.",
+  interim: "Sebentar ya Kak, Thya masih menghitung.",
+  stale:
+    "Maaf Kak, pesan Kakak tadi baru sampai ke Thya sekarang. Kalau masih perlu, kirim ulang ya.",
 };
 
 // Decision Q1 / A15: the card is its own message and its buttons carry the draft id, so a tap is
@@ -233,6 +244,45 @@ async function runAgent(
   return { owner, turn };
 }
 
+// One JSON line per turn, keyed by the trace id that agent_turns and the outbox rows carry. No
+// message text and no phone number: those stay in the database.
+function logTurn(entry: {
+  traceId: string;
+  outcome: "answered" | "failed";
+  durationMs: number;
+  inbound: number;
+  outbound: number;
+  error?: string;
+}) {
+  console.log(JSON.stringify({ event: "agent-turn", ...entry }));
+}
+
+// Goes through the outbox like any reply, so a retried job never sends it twice, and restarts the
+// typing indicator that the line itself clears.
+async function sendInterim(
+  deps: AgentTurnDeps,
+  {
+    businessId,
+    phone,
+    traceId,
+    wamid,
+  }: { businessId: string; phone: string; traceId: string; wamid: string },
+) {
+  try {
+    await commitTurn(deps.db, {
+      businessId,
+      traceId,
+      wamids: [],
+      history: [],
+      outbound: textOutbound(phone, `interim:${wamid}`, REPLIES.interim),
+    });
+    await deliverPending(deps.delivery, phone);
+    await deps.delivery.client.markRead(wamid).catch(() => {});
+  } catch (error) {
+    console.error("interim reply failed:", error instanceof Error ? error.message : error);
+  }
+}
+
 async function answer(
   deps: AgentTurnDeps,
   {
@@ -250,16 +300,38 @@ async function answer(
 
   await withTrace(traceId, async () => {
     let result: { owner: ModelMessage; turn: TurnResult };
+    let interim: Promise<void> | null = null;
+    const lastWamid = wamids.at(-1) ?? traceId;
+
+    const timer = setTimeout(() => {
+      interim = sendInterim(deps, { businessId: business.id, phone, traceId, wamid: lastWamid });
+    }, deps.interimAfterMs ?? INTERIM_AFTER_MS);
 
     try {
-      result = await runAgent(deps, business, { texts, tainted }, traceId);
+      // The interim line must be out before the reply is queued, or both sends race on the outbox.
+      result = await runAgent(deps, business, { texts, tainted }, traceId).finally(async () => {
+        clearTimeout(timer);
+        await interim;
+      });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const durationMs = Date.now() - started;
+
       await recordFailedTurn(deps.db, {
         traceId,
         businessId: business.id,
         channel: "whatsapp",
-        durationMs: Date.now() - started,
-        error: error instanceof Error ? error.message : String(error),
+        durationMs,
+        error: message,
+      });
+
+      logTurn({
+        traceId,
+        outcome: "failed",
+        durationMs,
+        inbound: wamids.length,
+        outbound: 1,
+        error: message,
       });
 
       // The owner never sees a technical error, and a failed model call never blocks the number.
@@ -289,14 +361,24 @@ async function answer(
       outbound,
     });
 
+    const durationMs = Date.now() - started;
+
     await recordTurn(deps.db, {
       traceId,
       businessId: business.id,
       channel: "whatsapp",
       turn,
-      durationMs: Date.now() - started,
+      durationMs,
       outboundMessages: outbound.length,
       model: deps.model.modelId,
+    });
+
+    logTurn({
+      traceId,
+      outcome: "answered",
+      durationMs,
+      inbound: wamids.length,
+      outbound: outbound.length,
     });
 
     if (deps.compact && (await historySize(deps.db, business.id)) > COMPACTION_THRESHOLD_CHARS)
@@ -317,9 +399,33 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
   if (rows.length === 0) return;
 
   const now = deps.now();
-  const wamids = rows.map((row) => row.wamid);
   const business = await findBusinessByPhone(db, phone);
   const day = jakartaDate(now);
+  const staleBefore = now.getTime() - STALE_AFTER_MS;
+
+  const stale =
+    business === null ? [] : rows.filter((row) => row.receivedAt.getTime() < staleBefore);
+
+  // Decided 2026-10-26: a message that arrives hours late never reaches the model or writes data;
+  // the owner is asked to send it again if it still matters.
+  if (business !== null && stale.length > 0)
+    await commitTurn(db, {
+      businessId: business.id,
+      traceId: newTraceId(),
+      wamids: stale.map((row) => row.wamid),
+      history: [],
+      outbound: textOutbound(phone, `stale:${stale.at(-1)?.wamid}`, REPLIES.stale),
+    });
+
+  const current = rows.filter((row) => !stale.includes(row));
+
+  if (current.length === 0) {
+    await deliverPending(delivery, phone);
+
+    return;
+  }
+
+  const wamids = current.map((row) => row.wamid);
 
   const reply = async (key: string, text: string) => {
     await commitTurn(db, {
@@ -345,7 +451,7 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
   // Read receipt + typing indicator are courtesy; a failure must not cost the reply.
   if (lastWamid) await delivery.client.markRead(lastWamid).catch(() => {});
 
-  const batch = await readBatch(deps, business, rows);
+  const batch = await readBatch(deps, business, current);
 
   if (batch.texts.length === 0 && batch.answered.length === 0)
     return reply(`unsupported:${lastWamid}`, REPLIES.unsupported);

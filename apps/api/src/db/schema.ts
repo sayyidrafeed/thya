@@ -325,6 +325,9 @@ export const outboundMessages = pgTable("outbound_messages", {
   error: text(),
   createdAt: createdAt(),
   sentAt: timestamp({ withTimezone: true }),
+  // From Meta's status webhooks; a failure after send lands in status/error instead.
+  deliveredAt: timestamp({ withTimezone: true }),
+  readAt: timestamp({ withTimezone: true }),
 });
 
 // modules/schedules (business-features-plan S4)

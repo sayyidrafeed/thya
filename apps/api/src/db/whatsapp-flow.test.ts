@@ -3,7 +3,13 @@ import { MockLanguageModelV4 } from "ai/test";
 import { eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { createWhatsAppClient } from "../channels/whatsapp/client";
-import { fakeGraph, signWebhook, textMessage, webhookBody } from "../channels/whatsapp/testing";
+import {
+  fakeGraph,
+  signWebhook,
+  statusBody,
+  textMessage,
+  webhookBody,
+} from "../channels/whatsapp/testing";
 import { whatsappWebhook } from "../http/whatsapp";
 import { createBoss, startJobs } from "../jobs";
 import { handleAgentTurn, REPLIES, type AgentTurnDeps } from "../jobs/agent-turn";
@@ -103,6 +109,100 @@ describe.if(integration)("whatsapp flow", () => {
 
     expect(await (await ask("verify")).text()).toBe("42");
     expect((await ask("wrong")).status).toBe(403);
+  });
+
+  test("delivery statuses land on the sent row, whatever their order, and a late failure shows", async () => {
+    await deliver(webhookBody([textMessage("wamid.st1", "halo")]));
+    await handleAgentTurn(deps(), OWNER);
+
+    const [sent] = await db.select().from(outboundMessages);
+    const wamid = sent?.wamid ?? "";
+    const read = { id: wamid, status: "read", timestamp: "1793088060" };
+    const delivered = { id: wamid, status: "delivered", timestamp: "1793088030" };
+
+    for (const body of [statusBody([read]), statusBody([delivered]), statusBody([read])])
+      expect((await deliver(body)).status).toBe(200);
+
+    const [seen] = await db.select().from(outboundMessages);
+
+    expect(seen?.readAt).toEqual(new Date(1793088060 * 1000));
+    // "read" arrived first and implies delivery; the later "delivered" does not move it.
+    expect(seen?.deliveredAt).toEqual(new Date(1793088060 * 1000));
+
+    await deliver(
+      statusBody([
+        {
+          id: wamid,
+          status: "failed",
+          timestamp: "1793088090",
+          errors: [{ code: 131026, title: "Message undeliverable" }],
+        },
+      ]),
+    );
+
+    const [failed] = await db.select().from(outboundMessages);
+
+    expect(failed).toMatchObject({ status: "failed", error: "131026: Message undeliverable" });
+  });
+
+  test("a slow turn sends one interim line first, then the answer", async () => {
+    await deliver(webhookBody([textMessage("wamid.slow", "ranking bulan lalu?")]));
+
+    const slow = new MockLanguageModelV4({
+      doGenerate: async () => {
+        await Bun.sleep(150);
+
+        return {
+          content: [{ type: "text", text: "Menu terlaris bulan lalu Kopi Susu, Kak." }],
+          finishReason: { unified: "stop", raw: "stop" },
+          usage,
+          warnings: [],
+        };
+      },
+    });
+
+    const run = { ...deps(fakeGraph(), slow), interimAfterMs: 20 };
+    await handleAgentTurn(run, OWNER);
+    await handleAgentTurn(run, OWNER);
+
+    expect(run.graph.sent().map((message) => message.text?.body)).toEqual([
+      REPLIES.interim,
+      "Menu terlaris bulan lalu Kopi Susu, Kak.",
+    ]);
+  });
+
+  test("a message 7 hours late gets a fixed ask-again line, and a fresh one beside it is answered", async () => {
+    const late = new Date(NOW.getTime() - 7 * 60 * 60 * 1000);
+
+    const lateMessage = {
+      ...textMessage("wamid.late", "catat 5 kopi susu"),
+      timestamp: String(late.getTime() / 1000),
+    };
+
+    const freshMessage = {
+      ...textMessage("wamid.fresh", "halo"),
+      timestamp: String(NOW.getTime() / 1000),
+    };
+
+    await deliver(webhookBody([lateMessage, freshMessage]));
+
+    const run = deps();
+    await handleAgentTurn(run, OWNER);
+    await handleAgentTurn(run, OWNER);
+
+    expect(run.graph.sent().map((message) => message.text?.body)).toEqual([
+      REPLIES.stale,
+      "Halo Kak, Thya *siap* bantu cek jualan.",
+    ]);
+
+    const [business] = await db.select({ id: inboundMessages.businessId }).from(inboundMessages);
+    const history = await loadHistory(db, business?.id ?? "");
+
+    // The late words never reached the model or the thread.
+    expect(history.map((message) => message.content)).toEqual([
+      "halo",
+      "Halo Kak, Thya *siap* bantu cek jualan.",
+    ]);
   });
 
   test("a bad signature stores nothing", async () => {

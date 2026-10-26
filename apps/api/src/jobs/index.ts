@@ -72,6 +72,7 @@ export async function startJobs(boss: PgBoss, deps: JobDeps) {
 
   if (schedules !== null)
     await boss.work(SCHEDULE_TICK, async () => {
+      await releaseBlockedPhones(boss);
       await fireDueSchedules({ ...schedules, flush: (phone) => enqueueAgentTurn(boss, phone, 0) });
     });
 
@@ -104,6 +105,28 @@ export async function startJobs(boss: PgBoss, deps: JobDeps) {
         console.error("agent-turn gave up:", error instanceof Error ? error.message : error);
       }
     });
+}
+
+// A job that expires on its last attempt (a hang or a killed process) ends "failed", and
+// key_strict_fifo then holds that number's later jobs for good. Dropping it frees the number; the
+// unanswered rows join its next batch, as after a thrown last attempt.
+export async function releaseBlockedPhones(boss: PgBoss) {
+  const phones = await boss.getBlockedKeys(AGENT_TURN);
+
+  for (const phone of phones) {
+    const failed = (await boss.findJobs(AGENT_TURN, { key: phone })).filter(
+      (job) => job.state === "failed",
+    );
+
+    await boss.deleteJob(
+      AGENT_TURN,
+      failed.map((job) => job.id),
+    );
+  }
+
+  if (phones.length > 0) console.error(`agent-turn: released ${phones.length} blocked number(s)`);
+
+  return phones.length;
 }
 
 // Also used to flush a number's pending sends (schedules): the job delivers before it reads.

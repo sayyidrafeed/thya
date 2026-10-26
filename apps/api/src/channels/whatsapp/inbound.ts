@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { DeliveryStatus } from "../../modules/conversation";
 
 // Only the fields Thya reads; everything else in Meta's payload passes through untouched.
 export const messageSchema = z.object({
@@ -19,6 +20,18 @@ export const messageSchema = z.object({
   context: z.object({ id: z.string() }).optional(),
 });
 
+// Meta reports each sent message's fate here; `errors` comes with "failed".
+const statusSchema = z.object({
+  id: z.string().min(1),
+  status: z.string(),
+  timestamp: z.string(),
+  errors: z
+    .array(
+      z.object({ code: z.number(), title: z.string().optional(), message: z.string().optional() }),
+    )
+    .optional(),
+});
+
 export const webhookSchema = z.object({
   object: z.string(),
   entry: z.array(
@@ -29,6 +42,8 @@ export const webhookSchema = z.object({
           value: z.object({
             metadata: z.object({ phone_number_id: z.string() }).optional(),
             messages: z.array(messageSchema).optional(),
+            // Parsed one by one later: an odd status must never cost the messages beside it.
+            statuses: z.array(z.unknown()).optional(),
           }),
         }),
       ),
@@ -46,12 +61,20 @@ export type InboundMessage = {
   payload: WebhookMessage;
 };
 
-// Statuses (sent/delivered/read) and other fields carry no owner message, so they yield nothing.
-export function inboundMessages(body: z.infer<typeof webhookSchema>, phoneNumberId: string) {
+type Webhook = z.infer<typeof webhookSchema>;
+
+function ownChanges(body: Webhook, phoneNumberId: string) {
   return body.entry
     .flatMap((entry) => entry.changes)
     .filter((change) => change.field === "messages")
-    .filter((change) => (change.value.metadata?.phone_number_id ?? phoneNumberId) === phoneNumberId)
+    .filter(
+      (change) => (change.value.metadata?.phone_number_id ?? phoneNumberId) === phoneNumberId,
+    );
+}
+
+// Statuses carry no owner message, so they yield nothing here (see deliveryStatuses).
+export function inboundMessages(body: Webhook, phoneNumberId: string) {
+  return ownChanges(body, phoneNumberId)
     .flatMap((change) => change.value.messages ?? [])
     .map((message): InboundMessage => ({
       wamid: message.id,
@@ -60,6 +83,33 @@ export function inboundMessages(body: z.infer<typeof webhookSchema>, phoneNumber
       receivedAt: new Date(Number(message.timestamp) * 1000),
       payload: message,
     }));
+}
+
+// "sent" adds nothing to what the send call already returned, so only the later fates are kept.
+export function deliveryStatuses(body: Webhook, phoneNumberId: string): DeliveryStatus[] {
+  return ownChanges(body, phoneNumberId)
+    .flatMap((change) => change.value.statuses ?? [])
+    .flatMap((raw) => {
+      const parsed = statusSchema.safeParse(raw);
+
+      if (!parsed.success) return [];
+
+      const status = parsed.data;
+
+      if (status.status !== "delivered" && status.status !== "read" && status.status !== "failed")
+        return [];
+
+      const [error] = status.errors ?? [];
+
+      return [
+        {
+          wamid: status.id,
+          status: status.status,
+          at: new Date(Number(status.timestamp) * 1000),
+          error: error ? `${error.code}: ${error.title ?? error.message ?? "failed"}` : null,
+        },
+      ];
+    });
 }
 
 // What the job does with one stored message. Media other than images, and unknown types, get a
