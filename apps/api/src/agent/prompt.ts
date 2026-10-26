@@ -33,6 +33,19 @@ Aturan menjawab:
 - Jawab maksimal sekitar 6 baris kecuali diminta detail, lalu tutup dengan satu saran singkat yang bisa langsung dilakukan. Saran itu tanpa angka.`;
 }
 
+// Engine-plan B2 + B1: business facts rendered from tables, then the rolling summary. Both change
+// rarely, so they sit after the static rules and before the turns (harness §6 prompt order).
+export type TurnMemory = { profile: string | null; summary: string | null };
+
+export function renderMemory({ profile, summary }: TurnMemory): string {
+  return [
+    `Profil usaha dari data Thya (kosong = belum dibahas, bukan data hilang):\n${profile ?? "(kosong)"}`,
+    ...(summary
+      ? [`Ringkasan percakapan sebelumnya (tanpa angka; angka selalu ambil dari tool):\n${summary}`]
+      : []),
+  ].join("\n\n");
+}
+
 export function renderTurnContext(now: Date): string {
   const today = jakartaDate(now);
 

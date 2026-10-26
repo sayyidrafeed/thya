@@ -1,5 +1,6 @@
 import { convertToModelMessages, createUIMessageStream, type UIMessage } from "ai";
 import { attachmentPort } from "../actions";
+import { renderProfile } from "../profile";
 import { demoDraftPort } from "./demo-drafts";
 import { runTurn, type TurnResult } from "../agent";
 import { toWhatsAppText } from "../channels/whatsapp/format";
@@ -40,6 +41,8 @@ async function runDemoTurn(
     drafts: demoDraftPort(messages),
     // Demo charts are stored like WhatsApp ones and served by GET /attachments/:id.
     attachments: attachmentPort(db, business.id, now),
+    // The web keeps its own short history, so it gets the profile block but no summary.
+    memory: { profile: await renderProfile(db, business.id, now), summary: null },
   });
 
   let turn: TurnResult;

@@ -5,7 +5,14 @@ import type { BusinessProfile } from "../modules/business";
 import type { SalesDataset } from "../sales/demo-shop";
 import type { ConceptEvent } from "../semantic/exposure";
 import { ungroundedNumbers, type UngroundedNumber } from "./postcheck";
-import { buildInstructions, promptFacts, renderTurnContext, withTurnContext } from "./prompt";
+import {
+  buildInstructions,
+  promptFacts,
+  renderMemory,
+  renderTurnContext,
+  withTurnContext,
+  type TurnMemory,
+} from "./prompt";
 import { fallbackReply } from "./fallback";
 import { createSalesTools, type SalesToolName } from "./tools";
 import { createWriteTools } from "./write-tools";
@@ -46,6 +53,8 @@ export type TurnInput = {
   drafts?: DraftPort;
   // Where showChart stores its picture. Without it the tool still answers with the points.
   attachments?: AttachmentPort;
+  // Profile block and rolling summary (B2, B1). Without it the prompt is the static rules only.
+  memory?: TurnMemory;
 };
 
 // The draft a write tool prepared this turn; the channel shows it as a card with Ya/Ubah/Batal.
@@ -93,7 +102,11 @@ async function attempt(
 
   const result = await generateText({
     model: input.model,
-    instructions: buildInstructions(input.business) + (feedback ? `\n\n${feedback}` : ""),
+    instructions: [
+      buildInstructions(input.business),
+      ...(input.memory ? [renderMemory(input.memory)] : []),
+      ...(feedback ? [feedback] : []),
+    ].join("\n\n"),
     messages: withTurnContext(input.messages, renderTurnContext(input.now)),
     tools,
     stopWhen: isStepCount(MAX_STEPS),
@@ -138,6 +151,8 @@ async function attempt(
 function evidenceFor(input: TurnInput, { toolCalls }: Attempt): string[] {
   return [
     ...promptFacts(input.business, input.now),
+    // Prices and costs in the profile block come from tables, so a reply may repeat them.
+    ...(input.memory?.profile ? [input.memory.profile] : []),
     JSON.stringify(input.messages),
     ...toolCalls.map((call) => JSON.stringify([call.input, call.output])),
   ];

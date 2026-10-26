@@ -225,3 +225,50 @@ export async function setMenuCost(
     draftId,
   });
 }
+
+export type MenuProfileItem = {
+  name: string;
+  price: number;
+  cost: {
+    amount: number;
+    source: (typeof menuCosts.$inferSelect)["source"];
+    validFrom: string;
+  } | null;
+};
+
+// The menu as the profile block shows it: price and the cost per portion in force today.
+export async function menuProfile(
+  db: Db,
+  businessId: string,
+  today: string,
+): Promise<MenuProfileItem[]> {
+  const items = await db
+    .select({ id: menuItems.id, name: menuItems.name, price: menuItems.price })
+    .from(menuItems)
+    .where(eq(menuItems.businessId, businessId))
+    .orderBy(asc(menuItems.name));
+
+  const costs = await db
+    .select({
+      menuItemId: menuCosts.menuItemId,
+      amount: menuCosts.amount,
+      source: menuCosts.source,
+      validFrom: menuCosts.validFrom,
+    })
+    .from(menuCosts)
+    .innerJoin(menuItems, eq(menuItems.id, menuCosts.menuItemId))
+    .where(and(eq(menuItems.businessId, businessId), lte(menuCosts.validFrom, today)))
+    .orderBy(asc(menuCosts.validFrom), asc(menuCosts.createdAt), asc(menuCosts.id));
+
+  const latest = new Map(costs.map((cost) => [cost.menuItemId, cost]));
+
+  return items.map((item) => {
+    const cost = latest.get(item.id);
+
+    return {
+      name: item.name,
+      price: item.price,
+      cost: cost ? { amount: cost.amount, source: cost.source, validFrom: cost.validFrom } : null,
+    };
+  });
+}

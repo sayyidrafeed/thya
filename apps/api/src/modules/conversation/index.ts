@@ -1,9 +1,14 @@
 import type { ModelMessage } from "ai";
-import { and, asc, desc, eq, gte, inArray, isNull, lte, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, max, sql } from "drizzle-orm";
 import { z } from "zod";
-import { repairHistory } from "../../agent";
+import { repairHistory, summarySchema, type ConversationSummary } from "../../agent";
 import type { Db } from "../../db/client";
-import { inboundMessages, messages, outboundMessages } from "../../db/schema";
+import {
+  conversationSummaries,
+  inboundMessages,
+  messages,
+  outboundMessages,
+} from "../../db/schema";
 
 // Recent turns sent to the model. Compaction (B1) takes over once the thread passes its threshold.
 const HISTORY_MESSAGES = 40;
@@ -28,12 +33,15 @@ export async function appendMessages(
   );
 }
 
-// The window starts at an owner message, so it never opens on a tool result whose call was cut.
+// The window starts at an owner message after the summary's cursor, so it never opens on a tool
+// result whose call was cut, and never repeats what the summary already covers.
 export async function loadHistory(db: Db, businessId: string): Promise<ModelMessage[]> {
+  const cursor = (await loadSummary(db, businessId))?.coversThroughMessageId ?? 0;
+
   const recent = await db
     .select({ message: messages.message })
     .from(messages)
-    .where(eq(messages.businessId, businessId))
+    .where(and(eq(messages.businessId, businessId), gt(messages.id, cursor)))
     .orderBy(desc(messages.id))
     .limit(HISTORY_MESSAGES);
 
@@ -41,6 +49,90 @@ export async function loadHistory(db: Db, businessId: string): Promise<ModelMess
   const start = ordered.findIndex((message) => message.role === "user");
 
   return start === -1 ? [] : repairHistory(ordered.slice(start));
+}
+
+// Engine-plan B1: one summary row per business, replaced under an optimistic revision check.
+export type StoredSummary = {
+  revision: number;
+  coversThroughMessageId: number;
+  summary: ConversationSummary;
+};
+
+export async function loadSummary(db: Db, businessId: string): Promise<StoredSummary | null> {
+  const [row] = await db
+    .select()
+    .from(conversationSummaries)
+    .where(eq(conversationSummaries.businessId, businessId));
+
+  if (!row) return null;
+
+  return {
+    revision: row.revision,
+    coversThroughMessageId: row.coversThroughMessageId,
+    summary: summarySchema.parse(row.summary),
+  };
+}
+
+export async function saveSummary(
+  db: Db,
+  {
+    businessId,
+    previousRevision,
+    coversThroughMessageId,
+    summary,
+  }: {
+    businessId: string;
+    previousRevision: number;
+    coversThroughMessageId: number;
+    summary: ConversationSummary;
+  },
+): Promise<boolean> {
+  const values = {
+    coversThroughMessageId,
+    summary,
+    revision: previousRevision + 1,
+    updatedAt: new Date(),
+  };
+
+  const saved =
+    previousRevision === 0
+      ? await db
+          .insert(conversationSummaries)
+          .values({ businessId, ...values })
+          .onConflictDoNothing()
+          .returning({ revision: conversationSummaries.revision })
+      : await db
+          .update(conversationSummaries)
+          .set(values)
+          .where(
+            and(
+              eq(conversationSummaries.businessId, businessId),
+              eq(conversationSummaries.revision, previousRevision),
+            ),
+          )
+          .returning({ revision: conversationSummaries.revision });
+
+  return saved.length > 0;
+}
+
+export async function messagesAfter(db: Db, businessId: string, afterId: number) {
+  return db
+    .select({ id: messages.id, message: messages.message })
+    .from(messages)
+    .where(and(eq(messages.businessId, businessId), gt(messages.id, afterId)))
+    .orderBy(asc(messages.id));
+}
+
+// Rough size of what the next turn would send: characters of the stored messages after the cursor.
+export async function historySize(db: Db, businessId: string): Promise<number> {
+  const cursor = (await loadSummary(db, businessId))?.coversThroughMessageId ?? 0;
+
+  const [row] = await db
+    .select({ chars: sql<number>`coalesce(sum(length(${messages.message}::text)), 0)::integer` })
+    .from(messages)
+    .where(and(eq(messages.businessId, businessId), gt(messages.id, cursor)));
+
+  return row?.chars ?? 0;
 }
 
 // Inbound WhatsApp messages: the wamid primary key drops a redelivered webhook (harness §4).

@@ -14,3 +14,12 @@ export { promptFacts } from "./prompt";
 export { ungroundedNumbers } from "./postcheck";
 
 export { repairHistory } from "./context";
+
+export {
+  compactHistory,
+  renderSummary,
+  summarySchema,
+  type ConversationSummary,
+} from "./compaction";
+
+export type { TurnMemory } from "./prompt";

@@ -2,6 +2,7 @@ import { PgBoss } from "pg-boss";
 import type { Db } from "../db/client";
 import { deleteExpiredAttachments } from "../modules/attachments";
 import { handleAgentTurn, type AgentTurnDeps } from "./agent-turn";
+import { compactConversation } from "./compaction";
 import { fireDueSchedules, type ScheduleDeps } from "./schedule-fire";
 
 // All pg-boss queues are wired here, in one place (decision Q9a). pg-boss keeps its tables in its
@@ -10,6 +11,7 @@ import { fireDueSchedules, type ScheduleDeps } from "./schedule-fire";
 export const AGENT_TURN = "agent-turn";
 export const SCHEDULE_TICK = "schedule-tick";
 export const ATTACHMENTS_CLEANUP = "attachments-cleanup";
+export const COMPACTION = "compaction";
 
 // Messages that arrive within this window are answered as one batch (decided 2026-10-25).
 export const BUFFER_SECONDS = 3;
@@ -66,14 +68,30 @@ export async function startJobs(boss: PgBoss, deps: JobDeps) {
       await fireDueSchedules({ ...schedules, flush: (phone) => enqueueAgentTurn(boss, phone, 0) });
     });
 
+  // stately + singletonKey: at most one queued and one running compaction per business.
+  await boss.createQueue(COMPACTION, { policy: "stately", retryLimit: 1, expireInSeconds: 120 });
+
   const agentTurn = deps.agentTurn;
+
+  if (agentTurn !== null)
+    await boss.work<{ businessId: string }>(COMPACTION, async ([job]) => {
+      if (job)
+        await compactConversation(
+          { db: agentTurn.db, model: agentTurn.model },
+          job.data.businessId,
+        );
+    });
+
+  const compact = async (businessId: string) => {
+    await boss.send(COMPACTION, { businessId }, { singletonKey: businessId });
+  };
 
   if (agentTurn !== null)
     await boss.work<{ phone: string }>(AGENT_TURN, { localConcurrency: 4 }, async ([job]) => {
       if (!job) return;
 
       try {
-        await handleAgentTurn(agentTurn, job.data.phone);
+        await handleAgentTurn({ ...agentTurn, compact }, job.data.phone);
       } catch (error) {
         // A failed job would hold back this number's later messages for good (key_strict_fifo),
         // so the last attempt gives up quietly; the unanswered rows join the next message's batch.

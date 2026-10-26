@@ -1,18 +1,22 @@
 import type { LanguageModel, ModelMessage } from "ai";
 import { attachmentPort, cancelOpenDraft, dbDraftPort, runDraft } from "../actions";
-import { runTurn, type TurnDraft, type TurnResult } from "../agent";
+import { renderSummary, runTurn, type TurnDraft, type TurnResult } from "../agent";
 import { CAPTION_LIMIT, TEXT_LIMIT } from "../channels/whatsapp/client";
 import { deliverPending, type Delivery } from "../channels/whatsapp/deliver";
 import { toWhatsAppText, splitText } from "../channels/whatsapp/format";
 import { messageSchema, readContent } from "../channels/whatsapp/inbound";
 import type { DraftOutcome } from "../actions/kinds";
+import { renderProfile } from "../profile";
+import { COMPACTION_THRESHOLD_CHARS } from "./compaction";
 import { readPaymentImage } from "./payment-image";
 import type { Db } from "../db/client";
 import { findBusinessByPhone, type Business } from "../modules/business";
 import {
   commitTurn,
   countInboundSince,
+  historySize,
   loadHistory,
+  loadSummary,
   unprocessedInbound,
   type Outbound,
 } from "../modules/conversation";
@@ -30,6 +34,8 @@ export type AgentTurnDeps = {
   now: () => Date;
   // Gate G11: QRIS/GoPay screenshots are read only when this is on.
   paymentsImport: boolean;
+  // Asks for a compaction job once the thread passes its threshold (B1); none in tests.
+  compact?: (businessId: string) => Promise<void>;
 };
 
 // What the thread records for a screenshot: never its content (A8), only that it came.
@@ -184,6 +190,15 @@ function tapHistory(answered: Tap[]): ModelMessage[] {
   ]);
 }
 
+async function turnMemory(db: Db, businessId: string, now: Date) {
+  const stored = await loadSummary(db, businessId);
+
+  return {
+    profile: await renderProfile(db, businessId, now),
+    summary: stored ? renderSummary(stored.summary) : null,
+  };
+}
+
 async function runAgent(
   deps: AgentTurnDeps,
   business: Business,
@@ -206,6 +221,7 @@ async function runAgent(
     formatReply: toWhatsAppText,
     drafts: tainted ? { ...drafts, confirmOpen: async () => TAINTED_CONFIRM } : drafts,
     attachments: attachmentPort(db, business.id, now),
+    memory: await turnMemory(db, business.id, now),
   });
 
   await appendConceptEvents(
@@ -282,6 +298,9 @@ async function answer(
       outboundMessages: outbound.length,
       model: deps.model.modelId,
     });
+
+    if (deps.compact && (await historySize(deps.db, business.id)) > COMPACTION_THRESHOLD_CHARS)
+      await deps.compact(business.id);
   });
 }
 
