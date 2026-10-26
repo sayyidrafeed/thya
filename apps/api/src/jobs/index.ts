@@ -31,6 +31,8 @@ export type JobDeps = {
   // Both need WhatsApp; without it the queues exist but nothing works them.
   agentTurn: AgentTurnDeps | null;
   schedules: Omit<ScheduleDeps, "flush"> | null;
+  // false: only create queues and enqueue (the web server); another process works them.
+  work: boolean;
 };
 
 export async function startJobs(boss: PgBoss, deps: JobDeps) {
@@ -55,6 +57,11 @@ export async function startJobs(boss: PgBoss, deps: JobDeps) {
   await boss.schedule(SCHEDULE_TICK, "* * * * *");
   await boss.schedule(ATTACHMENTS_CLEANUP, "17 3 * * *");
 
+  // stately + singletonKey: at most one queued and one running compaction per business.
+  await boss.createQueue(COMPACTION, { policy: "stately", retryLimit: 1, expireInSeconds: 120 });
+
+  if (!deps.work) return;
+
   await boss.work(ATTACHMENTS_CLEANUP, async () => {
     const deleted = await deleteExpiredAttachments(deps.db, new Date());
 
@@ -67,9 +74,6 @@ export async function startJobs(boss: PgBoss, deps: JobDeps) {
     await boss.work(SCHEDULE_TICK, async () => {
       await fireDueSchedules({ ...schedules, flush: (phone) => enqueueAgentTurn(boss, phone, 0) });
     });
-
-  // stately + singletonKey: at most one queued and one running compaction per business.
-  await boss.createQueue(COMPACTION, { policy: "stately", retryLimit: 1, expireInSeconds: 120 });
 
   const agentTurn = deps.agentTurn;
 

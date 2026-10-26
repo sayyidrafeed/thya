@@ -17,7 +17,9 @@ export function whatsappDelivery(db: Db): Delivery | null {
   };
 }
 
-export async function startWorkers(db: Db, databaseUrl: string) {
+// `work`: whether this process works the queues. worker.ts always does; the server only when
+// JOBS_IN_SERVER=1, so one container can run everything until a worker service exists.
+export async function startWorkers(db: Db, databaseUrl: string, work: boolean) {
   const boss = createBoss(databaseUrl);
   const delivery = whatsappDelivery(db);
 
@@ -31,6 +33,7 @@ export async function startWorkers(db: Db, databaseUrl: string) {
 
   await startJobs(boss, {
     db,
+    work,
     agentTurn:
       delivery === null
         ? null

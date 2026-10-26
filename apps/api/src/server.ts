@@ -24,9 +24,10 @@ const firstBoot = !(await hasSales(db, demo.id));
 
 if (firstBoot) await seedDemoSales(db, demo.id, new Date());
 
-// Jobs run in this process (one container on the VPS). A queue that cannot start must not take the
-// web demo down with it, so the failure is logged and the WhatsApp webhook stays off.
-const boss = await startWorkers(db, env.DATABASE_URL).catch((error) => {
+// The server always starts pg-boss to enqueue; it works the queues only with JOBS_IN_SERVER=1
+// (otherwise `bun src/worker.ts` does). A queue that cannot start must not take the web demo down,
+// so the failure is logged and the WhatsApp webhook stays off.
+const boss = await startWorkers(db, env.DATABASE_URL, env.JOBS_IN_SERVER).catch((error) => {
   console.error("jobs failed to start:", error instanceof Error ? error.message : error);
 
   return null;
@@ -92,7 +93,7 @@ export const app = new Elysia({ serve: { maxRequestBodySize: 256 * 1024 } })
   .listen(env.PORT);
 
 console.log(
-  `Thya API jalan di http://localhost:${app.server?.port} (WhatsApp ${whatsapp && boss ? "aktif" : "nonaktif"}).`,
+  `Thya API jalan di http://localhost:${app.server?.port} (WhatsApp ${whatsapp && boss ? "aktif" : "nonaktif"}, job ${env.JOBS_IN_SERVER ? "di server" : "di worker"}).`,
 );
 
 // After listen, so the health check passes while it runs. The demo's rows reach 30 days past each

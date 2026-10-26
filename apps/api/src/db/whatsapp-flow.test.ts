@@ -49,7 +49,7 @@ describe.if(integration)("whatsapp flow", () => {
     await seedDemoSales(db, business.id, NOW);
 
     boss = createBoss(process.env.TEST_DATABASE_URL ?? "");
-    await startJobs(boss, { db, agentTurn: null, schedules: null });
+    await startJobs(boss, { db, agentTurn: null, schedules: null, work: false });
     app = whatsappWebhook(db, boss, config);
   }, 60_000);
 
