@@ -3,7 +3,7 @@ import type { DraftPort, DraftRequest } from "../actions/kinds";
 import { buildDemoSales, demoBusiness } from "../sales/demo-shop";
 import { runTurn } from "./run-turn";
 import { scriptedModel } from "./testing";
-import { createWriteTools, matchMenu } from "./write-tools";
+import { ambiguousHour, createWriteTools, matchMenu } from "./write-tools";
 
 const NOW = new Date("2026-10-25T14:00:00+07:00");
 const dataset = buildDemoSales(NOW);
@@ -180,5 +180,16 @@ describe("runTurn with a write tool", () => {
         "Catat penjualan Minggu, 25 Okt 2026:\n- 2 Americano x Rp15.000 = Rp30.000\nTotal Rp30.000",
     });
     expect(result.check.action).toBe("none");
+  });
+});
+
+describe("ambiguousHour (schedule-ambiguous-hour)", () => {
+  test('"jam 6" needs pagi or malam; a day part, a 24-hour time, or a padded hour is clear', () => {
+    expect(ambiguousHour("jam 6")).toBe(true);
+    expect(ambiguousHour("tiap jam 9.30")).toBe(true);
+    expect(ambiguousHour("jam 6 sore")).toBe(false);
+    expect(ambiguousHour("jam 21.00")).toBe(false);
+    expect(ambiguousHour("jam 06:00")).toBe(false);
+    expect(ambiguousHour(null)).toBe(false);
   });
 });

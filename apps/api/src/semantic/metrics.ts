@@ -1,4 +1,4 @@
-import { formatPercent, formatRupiah } from "../sales/format";
+import { formatCount, formatPercent, formatRupiah } from "../sales/format";
 import { summarizeSales, type DateRange, type MenuItem, type SaleRecord } from "../sales/report";
 import type { ConceptId } from "./concepts";
 
@@ -68,7 +68,8 @@ function amount(metric: ComputableMetric, summary: SalesSummary): number {
 function formatAmount(metric: ComputableMetric, value: number): string {
   if (metric === "gross_margin") return formatPercent(value);
 
-  return metric === "items_sold" ? `${value} porsi` : formatRupiah(value);
+  // Thousands separated like every other figure Thya shows ("1.249 porsi"), so the model copies it as is.
+  return metric === "items_sold" ? `${formatCount(value)} porsi` : formatRupiah(value);
 }
 
 // Margin moves in percentage points; everything else in percent of the previous value.

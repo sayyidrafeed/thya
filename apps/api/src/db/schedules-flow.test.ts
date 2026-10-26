@@ -90,7 +90,10 @@ describe.if(integration)("schedules", () => {
   test("a schedule made in chat waits for Ya, then runs at 21:00 WIB (S4-AC1, AC2)", async () => {
     const graph = await say(
       "tiap hari kirim rekap jam 9 malam",
-      [{ tool: "createSchedule", input: dailyRecap }, { text: "Cek dulu ya Kak." }],
+      [
+        { tool: "createSchedule", input: { ...dailyRecap, timeWords: "jam 9 malam" } },
+        { text: "Cek dulu ya Kak." },
+      ],
       NOW,
     );
 

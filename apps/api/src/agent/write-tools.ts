@@ -183,11 +183,31 @@ export const createScheduleInputSchema = z.object({
     .describe(
       "Untuk recap: daily = rekap kemarin, weekly = rekap minggu lalu; null untuk reminder",
     ),
+  timeWords: z
+    .string()
+    .nullable()
+    .describe(
+      'Kata persis Kakak tentang jamnya, misalnya "jam 9 malam" atau "jam 6"; null kalau tidak disebut',
+    ),
   reminderText: z
     .string()
     .nullable()
     .describe("Isi pengingat untuk reminder (maksimal 120 huruf), null untuk recap"),
 });
+
+const DAY_PART = /pagi|siang|sore|petang|malam|subuh|dini hari/i;
+
+// "Jam 6" could be 06:00 or 18:00. Code checks the owner's words instead of trusting the model's
+// guess (eval case schedule-ambiguous-hour, decision U5: the rule lives in the tool).
+export function ambiguousHour(words: string | null): boolean {
+  if (words === null || DAY_PART.test(words)) return false;
+
+  return [...words.matchAll(/\b(\d{1,2})(?:[.:]\d{2})?\b/g)].some(([, hour = ""]) => {
+    const value = Number(hour);
+
+    return value >= 1 && value <= 12 && !hour.startsWith("0");
+  });
+}
 
 const ESTIMATE_SHARE = { half: 2, third: 3, quarter: 4 } as const;
 
@@ -254,6 +274,12 @@ export function createWriteTools(dataset: SalesDataset, port: DraftPort | null) 
 
   async function scheduleDraft(input: z.infer<typeof createScheduleInputSchema>) {
     if (port === null) return { status: "error" as const, message: NOT_READY };
+
+    if (ambiguousHour(input.timeWords))
+      return {
+        status: "error" as const,
+        message: `"${input.timeWords}" belum jelas pagi atau malam. Tanya Kakak dulu, jangan menebak.`,
+      };
 
     const parsed = scheduleSpecSchema.safeParse(input);
 
