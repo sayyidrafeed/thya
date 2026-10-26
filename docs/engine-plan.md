@@ -471,6 +471,20 @@ Yang belum dikerjakan dari slot 26 Okt: empat pengecekan WhatsApp butuh akses da
 - Kontrak disamakan: `modules/recaps` mengisi `SummaryCard` milik `visuals`; `computeMetric` sekarang mengembalikan `trend` (naik/turun/datar) dari pembulatan yang sama dengan `change`.
 - Gate: lint, format, typecheck lulus; `bun run test` dengan integrasi: api 206 (termasuk 129 tes modul fitur), web 3. Env fitur ditambah bersama wiring tool-nya.
 
+**30 Okt–5 Nov (dikerjakan 2026-10-25/26, session thya-build).** Semua slice di bawah ada di `main` dan ter-deploy ke `thya-api.sayyidrafee.com`. Keputusan teknisnya dicatat di `docs/decisions.md` (entri 2026-10-26).
+
+| Slot | Commit | Status | Bukti |
+|---|---|---|---|
+| 30 Okt–1 Nov: webhook WhatsApp, pg-boss `agent-turn`, outbox idempoten (A13), rate limit (A9), formatter U4, U1 versi di `agent_turns` | `73b6e3d` | Selesai di kode, **belum diuji dengan Meta** (kredensial belum ada). Kanal hidup hanya kalau 4 env `WHATSAPP_*` terisi | Tes integrasi `src/db/whatsapp-flow.test.ts`: webhook dobel menghasilkan satu balasan, pesan dalam buffer 3 detik dijawab sekali, kiriman yang gagal setelah commit terkirim di retry tanpa memanggil model lagi, nomor tak terdaftar, banjir pesan. Produksi: queue `agent-turn` (`key_strict_fifo`) ada, `agent_turns.model` dan `prompt_hash` terisi |
+| 1–3 Nov: drafts, Ya/Ubah/Batal, catat penjualan lewat teks (Q3), onboarding HPP (`setMenuCost`) | `d6c6f0d`, `80517ba` | Selesai | `src/db/drafts-flow.test.ts`: satu tap Ya menyimpan sekali, tap kedua tidak menggandakan, Batal, Ubah, kartu basi, draft kedaluwarsa, "ya" yang diketik, modal baru tidak mengubah laba pekan lalu. Uji lokal dengan Netra: "tadi laku 3 es kopi susu sama 2 americano" lalu "ya betul" memanggil `recordSales` lalu `confirmDraft` |
+| 3–5 Nov: jadwal (S4) + rekap terjadwal + kartu PNG | `40ec452` | Selesai, kirim di luar jendela 24 jam menunggu template Meta | `src/db/schedules-flow.test.ts`: jadwal baru menunggu Ya, `next_run_at` 21.00 WIB, tick dobel mengirim sekali (S4-AC3), rekap mingguan sebagai gambar, template di luar jendela, pengingat terlambat. Unit `nextRunAt` untuk batas hari WIB vs UTC dan batas jendela 23.49/23.50/24.00 (S4-AC4). Produksi: queue `schedule-tick` dan `attachments-cleanup` ada |
+| 3–5 Nov: `showChart` (S2) + `modules/attachments` | `eaab7af` | Selesai | `src/agent/chart-tool.test.ts` (titik sama persis dengan `dailySales`/`rankMenuItems`, S2-AC3) dan tes WhatsApp (satu gambar dengan caption, retry tidak mengirim gambar kedua, S2-AC4). Produksi: `/demo/chat` "kasih grafik omzet 7 hari terakhir" memanggil `showChart`, `GET /attachments/:id` mengembalikan PNG 49 KB dari image x64 (S1-AC6 terbukti) |
+| S9 screenshot QRIS/GoPay | `4d17eb0` | Selesai di kode, **mati** sampai G11 | Unit normalisasi, validasi, dedupe (termasuk dua pembayaran sama di menit yang sama dan gambar dikirim ulang) dan Netra error. Integrasi: tidak ada baris sebelum Ya, gambar sama dua kali tidak menambah, caption "catat ya" tidak bisa mengonfirmasi, omzet menu tidak berubah. Uji lokal Netra pada 4 sampel sintetis: nominal sama dengan kunci jawaban, termasuk sampel injeksi |
+| 3–5 Nov: compaction (B1) + blok profil (B2) | `c53ebdb` | Selesai | `src/db/memory.test.ts` dan `src/agent/compaction.test.ts`. Uji lokal Netra: harga menu dijawab dari blok profil tanpa tool, pertanyaan omzet tetap lewat `queryMetric` |
+| Temuan eval 26 Okt | `8be86a7` | Selesai | `items_sold` memakai pemisah ribuan, `createSchedule` menolak jam ambigu (`timeWords`), aturan "balik modal" |
+
+Belum dikerjakan dari slot ini: sambungan Sheets (S5/S6) dan email (S7), karena prioritas 1–6 selesai lebih dulu dan keduanya butuh kredensial Google/AWS yang belum ada; label "perkiraan" pada angka laba turunan (semantic-education item 6); pemindahan `src/sales` dan `src/semantic` ke `src/modules`; reply plan multi-bubble Q6 di belakang konstanta. Status thread ini: thread 200 pesan belum diukur langsung; ambang compaction diuji dengan riwayat sintetis 20 pesan.
+
 ## 7. Keputusan Rafee
 
 Hasil grilling 2026-10-25. Yang sudah diputuskan juga dicatat di `docs/decisions.md` (entri "grilling engine plan").
