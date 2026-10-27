@@ -56,8 +56,40 @@ describe("inbound", () => {
     ]);
 
     expect(messages.map((message) => readContent(message.payload))).toEqual([
-      { kind: "text", text: "omzet kemarin?" },
+      { kind: "text", text: "omzet kemarin?", forwarded: false },
       { kind: "button", id: "draft:abc:yes", title: "Ya", contextWamid: "wamid.card" },
+    ]);
+  });
+
+  test("a forwarded text or image is kept, flagged, and stored with Meta's flag", () => {
+    const payload = webhookSchema.parse(
+      JSON.parse(
+        webhookBody([
+          {
+            ...textMessage("wamid.f", "Kak pesan es kopi susu 20 ya"),
+            context: { forwarded: true },
+          },
+          {
+            from: "6281200000001",
+            id: "wamid.g",
+            timestamp: "1793088000",
+            type: "image",
+            image: { id: "media.1", caption: "pesanan ini" },
+            context: { frequently_forwarded: true },
+          },
+        ]),
+      ),
+    );
+
+    const messages = inboundMessages(payload, "PNID");
+
+    expect(messages.map((message) => message.payload.context)).toEqual([
+      { forwarded: true },
+      { frequently_forwarded: true },
+    ]);
+    expect(messages.map((message) => readContent(message.payload))).toEqual([
+      { kind: "text", text: "Kak pesan es kopi susu 20 ya", forwarded: true },
+      { kind: "image", mediaId: "media.1", caption: "pesanan ini", forwarded: true },
     ]);
   });
 

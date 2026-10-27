@@ -3,7 +3,7 @@ import { ANY_WRITE, CONFIRM_TOOL, MENU_COST_TOOL, WRITE_TOOL, type EvalCaseInput
 // Write tools are being built (engine-plan §6 1–3 Nov, decisions Q1/Q3). Until then every case
 // here is capability. State checks (G4: draft rows, one transaction after a double "ya") need an
 // eval business of their own so runs do not write into the shared demo seed.
-const ASKS_CONFIRMATION = /\bya\b|konfirmasi|benar|betul|sesuai|setuju|lanjut/i;
+export const ASKS_CONFIRMATION = /\bya\b|konfirmasi|benar|betul|sesuai|setuju|lanjut/i;
 
 export const writeCases: EvalCaseInput[] = [
   {

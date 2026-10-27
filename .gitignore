@@ -10,3 +10,5 @@ out
 next-env.d.ts
 *.tsbuildinfo
 apps/api/eval/runs
+# Real payment screenshots and their answer keys (gate G11): never committed.
+apps/api/eval/images

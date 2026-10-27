@@ -16,7 +16,8 @@
     "db:seed": "bun --env-file=../../.env scripts/seed-demo.ts",
     "phone:register": "bun --env-file=../../.env scripts/register-phone.ts",
     "eval:compare": "bun eval/compare.ts",
-    "eval:from-trace": "bun --env-file=../../.env eval/from-trace.ts"
+    "eval:from-trace": "bun --env-file=../../.env eval/from-trace.ts",
+    "eval:images": "bun --env-file=../../.env eval/images.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.78",

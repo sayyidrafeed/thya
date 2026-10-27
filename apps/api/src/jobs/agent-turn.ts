@@ -17,6 +17,7 @@ import {
   historySize,
   loadHistory,
   loadSummary,
+  quoteForwarded,
   unprocessedInbound,
   type Outbound,
 } from "../modules/conversation";
@@ -53,7 +54,8 @@ const IMAGE_NOTE = "[Pemilik mengirim gambar]";
 
 const TAINTED_CONFIRM: DraftOutcome = {
   status: "none",
-  message: "Untuk pesan yang ada gambarnya, konfirmasi lewat tombol Ya di kartu ya Kak.",
+  message:
+    "Untuk pesan yang ada gambarnya atau pesan terusan, konfirmasi lewat tombol Ya di kartu ya Kak.",
 };
 
 // Engine-plan A9: more than this many messages in a minute gets one throttle reply, no model turn.
@@ -141,7 +143,7 @@ function draftCard(to: string, draft: TurnDraft): Outbound {
 type Tap = { wamid: string; tapped: string; reply: string; card: TurnDraft | null };
 
 // Owner words for the model, in arrival order, plus what code already answered. `tainted`: the
-// batch carried a picture, so a typed "ya" in it confirms nothing (engine-plan A14).
+// batch carried a picture or a forwarded message, so a typed "ya" in it confirms nothing (A14).
 type Batch = { texts: string[]; answered: Tap[]; tainted: boolean };
 
 type InboundRow = Awaited<ReturnType<typeof unprocessedInbound>>[number];
@@ -168,11 +170,16 @@ async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundR
 
   for (const row of rows) {
     const content = readContent(messageSchema.parse(row.payload));
+    const forwarded = "forwarded" in content && content.forwarded;
+    const said = (text: string) => (forwarded ? quoteForwarded(text) : text);
 
-    if (content.kind === "text") batch.texts.push(content.text);
+    // Someone else's words (A14): readable as data, but nothing in this turn confirms a draft.
+    if (forwarded) batch.tainted = true;
+
+    if (content.kind === "text") batch.texts.push(said(content.text));
 
     if (content.kind === "image") {
-      if (content.caption) batch.texts.push(content.caption);
+      if (content.caption) batch.texts.push(said(content.caption));
 
       const imports = { payments: deps.paymentsImport, delivery: deps.deliveryImport ?? false };
 

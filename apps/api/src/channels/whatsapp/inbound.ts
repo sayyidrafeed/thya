@@ -17,7 +17,16 @@ export const messageSchema = z.object({
   image: z
     .object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional() })
     .optional(),
-  context: z.object({ id: z.string() }).optional(),
+  // A reply carries `id`; a forwarded text or image carries only `forwarded` (forwarded up to 5
+  // times) or `frequently_forwarded` (more than 5). Meta webhook reference, messages/text and
+  // messages/image: developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/text
+  context: z
+    .object({
+      id: z.string().optional(),
+      forwarded: z.boolean().optional(),
+      frequently_forwarded: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 // Meta reports each sent message's fate here; `errors` comes with "failed".
@@ -114,14 +123,18 @@ export function deliveryStatuses(body: Webhook, phoneNumberId: string): Delivery
 
 // What the job does with one stored message. Media other than images, and unknown types, get a
 // fixed reply instead of a model turn (voice notes wait for the STT bake-off, harness §10).
+// `forwarded`: the words are someone else's (often a customer's order), not the owner's.
 export type InboundContent =
-  | { kind: "text"; text: string }
+  | { kind: "text"; text: string; forwarded: boolean }
   | { kind: "button"; id: string; title: string; contextWamid: string | null }
-  | { kind: "image"; mediaId: string; caption: string | null }
+  | { kind: "image"; mediaId: string; caption: string | null; forwarded: boolean }
   | { kind: "unsupported"; type: string };
 
 export function readContent(message: WebhookMessage): InboundContent {
-  if (message.type === "text" && message.text) return { kind: "text", text: message.text.body };
+  const forwarded = Boolean(message.context?.forwarded || message.context?.frequently_forwarded);
+
+  if (message.type === "text" && message.text)
+    return { kind: "text", text: message.text.body, forwarded };
 
   const reply = message.interactive?.button_reply;
 
@@ -134,7 +147,12 @@ export function readContent(message: WebhookMessage): InboundContent {
     };
 
   if (message.type === "image" && message.image)
-    return { kind: "image", mediaId: message.image.id, caption: message.image.caption ?? null };
+    return {
+      kind: "image",
+      mediaId: message.image.id,
+      caption: message.image.caption ?? null,
+      forwarded,
+    };
 
   return { kind: "unsupported", type: message.type };
 }
