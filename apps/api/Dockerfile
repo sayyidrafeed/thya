@@ -2,7 +2,7 @@
 # Build from the repo root so the workspace lockfile is in context: docker build -f apps/api/Dockerfile .
 # Env (NETRA_*, DATABASE_URL, WEB_ORIGINS, ...) comes from Dokploy at runtime, never from the image.
 
-FROM oven/bun:1.4.2 AS deps
+FROM oven/bun:1.4.4 AS deps
 WORKDIR /app
 
 COPY package.json bun.lock tsconfig.base.json ./
@@ -11,7 +11,7 @@ COPY apps/web/package.json apps/web/
 RUN --mount=type=cache,id=thya-api-bun,target=/root/.bun/install/cache \
     bun install --frozen-lockfile --ignore-scripts --production --filter @thya/api
 
-FROM oven/bun:1.4.2-slim AS runner
+FROM oven/bun:1.4.4-slim AS runner
 ENV NODE_ENV=production PORT=3001
 WORKDIR /app
 

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Build from the repo root so the workspace lockfile is in context: docker build -f apps/web/Dockerfile .
 
-FROM oven/bun:1.4.2 AS builder
+FROM oven/bun:1.4.4 AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
