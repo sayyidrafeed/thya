@@ -37,7 +37,14 @@ export async function startWorkers(db: Db, databaseUrl: string, work: boolean) {
     agentTurn:
       delivery === null
         ? null
-        : { db, model: chatModel, delivery, now, paymentsImport: env.PAYMENTS_IMPORT_ENABLED },
+        : {
+            db,
+            model: chatModel,
+            delivery,
+            now,
+            paymentsImport: env.PAYMENTS_IMPORT_ENABLED,
+            deliveryImport: env.DELIVERY_IMPORT_ENABLED,
+          },
     schedules: delivery === null ? null : { db, now, templates },
   });
 

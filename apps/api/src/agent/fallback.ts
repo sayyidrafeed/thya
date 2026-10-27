@@ -12,7 +12,12 @@ const APOLOGY =
 const NEUTRAL_APOLOGY =
   "Maaf Kak, Thya belum bisa jawab yang ini dengan pas. Boleh ditanyakan lagi dengan kalimat lain ya?";
 
-const FIGURE_TOOLS = new Set(["queryMetric", "getTopMenuItems", "getDailySales"]);
+const FIGURE_TOOLS = new Set([
+  "queryMetric",
+  "getTopMenuItems",
+  "getDailySales",
+  "compareChannels",
+]);
 
 type FallbackReply = { reply: string; action: Extract<TurnAction, "template" | "apology"> };
 
@@ -39,6 +44,32 @@ const dailyOutput = z.object({
 });
 
 const conceptOutput = z.object({ status: z.literal("ok"), text: z.string() });
+
+const channelsOutput = z.object({
+  status: z.literal("ok"),
+  range,
+  channels: z.array(
+    z.object({
+      label: z.string(),
+      revenue: z.string(),
+      grossProfit: z.string().optional(),
+      margin: z.string().optional(),
+      estimated: z.boolean().optional(),
+      message: z.string().optional(),
+    }),
+  ),
+});
+
+function channelLines(compared: z.infer<typeof channelsOutput>): string[] {
+  return [
+    `Jualan per saluran ${period(compared.range)}:`,
+    ...compared.channels.map((line) =>
+      line.grossProfit === undefined
+        ? `- ${line.label}: omzet ${line.revenue}, untungnya belum bisa dihitung.`
+        : `- ${line.label}: omzet ${line.revenue}, laba kotor ${line.grossProfit} (margin ${line.margin}${line.estimated ? ", perkiraan" : ""})`,
+    ),
+  ];
+}
 
 const chartOutput = z.object({ status: z.literal("ok"), attachmentId: z.string(), range });
 
@@ -93,6 +124,12 @@ function linesFor({ toolName, output }: TurnToolCall): string[] {
     const chart = chartOutput.safeParse(output);
 
     return chart.success ? [`Ini grafiknya, Kak, untuk ${period(chart.data.range)}.`] : [];
+  }
+
+  if (toolName === "compareChannels") {
+    const compared = channelsOutput.safeParse(output);
+
+    return compared.success ? channelLines(compared.data) : [];
   }
 
   if (toolName !== "explainConcept") return [];

@@ -47,6 +47,12 @@ export const env = createEnv({
       .enum(["0", "1"])
       .default("0")
       .transform((value) => value === "1"),
+    // Reading GoFood/GrabFood/ShopeeFood sales screenshots stays off until real screenshots are
+    // checked the way S9-AC1 checks QRIS ones (decided 2026-10-27).
+    DELIVERY_IMPORT_ENABLED: z
+      .enum(["0", "1"])
+      .default("0")
+      .transform((value) => value === "1"),
     WHATSAPP_GRAPH_VERSION: z
       .string()
       .regex(/^v\d+\.\d+$/)

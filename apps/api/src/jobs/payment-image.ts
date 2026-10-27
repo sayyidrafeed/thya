@@ -4,14 +4,22 @@ import type { TurnDraft } from "../agent";
 import { WhatsAppError, type WhatsAppClient } from "../channels/whatsapp/client";
 import type { Db } from "../db/client";
 import {
+  channelImageSeen,
+  MAX_CHANNEL_AGE_DAYS,
+  planChannelImport,
+  storedChannelSales,
+} from "../modules/channel-sales";
+import {
+  EXTRACTION_REPLIES,
   extractPayments,
   imageSeen,
   MAX_PAYMENT_AGE_DAYS,
   planPaymentsImport,
   storedPaymentsSince,
+  type RawDeliveryDay,
 } from "../modules/payments-import";
 import { formatRupiah } from "../sales/format";
-import { jakartaDate } from "../sales/report";
+import { addDays, jakartaDate, type DeliveryChannel } from "../sales/report";
 
 // Business-features-plan S9, behind gate G11. The picture goes to one extraction call and is then
 // dropped; only its hash, the rows and the card stay. Saving needs the "Ya" button.
@@ -20,7 +28,76 @@ export type PaymentImageDeps = { db: Db; model: LanguageModel; client: WhatsAppC
 
 export type PaymentImageResult = { reply: string; draft: TurnDraft | null; note: string };
 
+// Which pictures are imported: QRIS/GoPay (PAYMENTS_IMPORT_ENABLED, gate G11) and delivery app
+// sales summaries (DELIVERY_IMPORT_ENABLED). One extraction call serves both.
+export type ImageImports = { payments: boolean; delivery: boolean };
+
 const WRONG_FILE = "Thya baru bisa membaca gambar JPG atau PNG di bawah 5 MB, Kak.";
+
+const READ_CARD =
+  "Thya sudah baca screenshotnya. Cek dulu ya Kak, lalu tekan Ya, Ubah, atau Batal.";
+
+const DELIVERY_REPLIES = {
+  onlyDelivery:
+    "Thya baru bisa mencatat ringkasan penjualan GoFood, GrabFood, atau ShopeeFood dari gambar, Kak. Bukti pembayaran QRIS belum bisa dicatat.",
+  notSales:
+    "Ini sepertinya bukan ringkasan penjualan, Kak. Kirim screenshot ringkasan penjualan per hari dari GoBiz, GrabMerchant, atau aplikasi ShopeeFood ya.",
+  notEither:
+    "Ini sepertinya bukan bukti transaksi atau ringkasan penjualan, Kak. Kirim screenshot riwayat GoPay Merchant, mutasi QRIS, atau ringkasan penjualan GoFood, GrabFood, atau ShopeeFood ya.",
+  unknownApp:
+    "Thya belum tahu ini ringkasan dari aplikasi mana, Kak. Kirim screenshot yang kelihatan nama GoFood, GrabFood, atau ShopeeFood-nya ya.",
+  periodOnly:
+    "Ini ringkasan beberapa hari sekaligus, Kak. Thya mencatat per hari, jadi kirim ringkasan per tanggal ya (pilih satu tanggal di aplikasinya).",
+};
+
+function notTransactionsReply({ payments, delivery }: ImageImports): string {
+  if (!delivery) return EXTRACTION_REPLIES.not_transactions;
+
+  return payments ? DELIVERY_REPLIES.notEither : DELIVERY_REPLIES.notSales;
+}
+
+async function readDeliverySales(
+  deps: PaymentImageDeps,
+  {
+    businessId,
+    now,
+    traceId,
+    sha256,
+  }: { businessId: string; now: Date; traceId: string; sha256: string },
+  { channel, days }: { channel: DeliveryChannel | null; days: RawDeliveryDay[] },
+): Promise<PaymentImageResult> {
+  const unread = (reply: string) => ({
+    reply,
+    draft: null,
+    note: "Pemilik mengirim screenshot aplikasi pesan-antar; tidak ada penjualan yang bisa dicatat.",
+  });
+
+  if (channel === null) return unread(DELIVERY_REPLIES.unknownApp);
+
+  if (days.length === 0) return unread(DELIVERY_REPLIES.periodOnly);
+
+  const today = jakartaDate(now);
+
+  const plan = planChannelImport(
+    days,
+    await storedChannelSales(deps.db, {
+      businessId,
+      channel,
+      since: addDays(today, -(MAX_CHANNEL_AGE_DAYS + 1)),
+    }),
+    { channel, imageSeen: await channelImageSeen(deps.db, businessId, sha256), today },
+  );
+
+  if (plan.toInsert.length === 0) return { reply: plan.card, draft: null, note: plan.historyNote };
+
+  const { draftId } = await dbDraftPort(deps.db, { businessId, traceId, now }).create({
+    kind: "channel_sales.import",
+    args: { channel, imageSha256: sha256, rows: plan.toInsert },
+    summary: plan.card,
+  });
+
+  return { reply: READ_CARD, draft: { draftId, summary: plan.card }, note: plan.historyNote };
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -52,7 +129,8 @@ export async function readPaymentImage(
     mediaId,
     now,
     traceId,
-  }: { businessId: string; mediaId: string; now: Date; traceId: string },
+    imports,
+  }: { businessId: string; mediaId: string; now: Date; traceId: string; imports: ImageImports },
 ): Promise<PaymentImageResult> {
   let image: Awaited<ReturnType<WhatsAppClient["downloadImage"]>>;
 
@@ -79,13 +157,27 @@ export async function readPaymentImage(
     model: deps.model,
     mediaType: image.mediaType,
     today,
+    delivery: imports.delivery,
   });
+
+  if (extraction.status === "delivery_sales")
+    return readDeliverySales(deps, { businessId, now, traceId, sha256 }, extraction);
 
   if (extraction.status !== "ok")
     return {
-      reply: extraction.message,
+      reply:
+        extraction.status === "not_transactions"
+          ? notTransactionsReply(imports)
+          : extraction.message,
       draft: null,
       note: "Pemilik mengirim gambar; tidak ada pembayaran yang terbaca.",
+    };
+
+  if (!imports.payments)
+    return {
+      reply: DELIVERY_REPLIES.onlyDelivery,
+      draft: null,
+      note: "Pemilik mengirim bukti pembayaran; pencatatan pembayaran belum dinyalakan.",
     };
 
   if (extraction.documentKind === "settlement" && extraction.settlement !== null)
@@ -119,7 +211,7 @@ export async function readPaymentImage(
   });
 
   return {
-    reply: "Thya sudah baca screenshotnya. Cek dulu ya Kak, lalu tekan Ya, Ubah, atau Batal.",
+    reply: READ_CARD,
     draft: { draftId, summary: plan.card },
     note: plan.historyNote,
   };

@@ -1,6 +1,7 @@
 import type { AttachmentPort } from "../agent";
 import type { Db } from "../db/client";
 import { saveAttachment } from "../modules/attachments";
+import { insertChannelSales, setCommission } from "../modules/channel-sales";
 import { insertPayments } from "../modules/payments-import";
 import {
   cancelDraft,
@@ -11,6 +12,7 @@ import {
   type Claim,
 } from "../modules/drafts";
 import { formatRupiah } from "../sales/format";
+import { DELIVERY_CHANNEL_NAMES } from "../sales/report";
 import { recordChatSales, setMenuCost } from "../sales/repository";
 import {
   cancelSchedule,
@@ -20,7 +22,7 @@ import {
   scheduleSummary,
   specOf,
 } from "../modules/schedules";
-import { dayLabel, runLabel } from "./summary";
+import { commissionText, dayLabel, runLabel } from "./summary";
 import { storedDraftSchema, type DraftOutcome, type DraftPort, type StoredDraft } from "./kinds";
 
 // Draft executors: one per kind, each a thin call into the module that owns the table. Messages
@@ -57,6 +59,22 @@ async function execute(
     return already === 0
       ? `Sudah dicatat, Kak: ${added} pembayaran masuk.`
       : `Sudah dicatat, Kak: ${added} pembayaran baru, ${already} sudah ada sebelumnya.`;
+  }
+
+  if (draft.kind === "channel_sales.import") {
+    const added = await insertChannelSales(db, { businessId, draftId, ...draft.args });
+    const already = draft.args.rows.length - added;
+    const name = DELIVERY_CHANNEL_NAMES[draft.args.channel];
+
+    return already === 0
+      ? `Sudah dicatat, Kak: penjualan ${name} ${added} hari, terpisah dari omzet menu.`
+      : `Sudah dicatat, Kak: penjualan ${name} ${added} hari baru, ${already} hari sudah ada sebelumnya.`;
+  }
+
+  if (draft.kind === "channel.set_commission") {
+    await setCommission(db, { businessId, draftId, commission: draft.args, now });
+
+    return `Siap, Kak. Potongan ${DELIVERY_CHANNEL_NAMES[draft.args.channel]} sekarang ${commissionText(draft.args)}.`;
   }
 
   if (draft.kind === "schedule.cancel")

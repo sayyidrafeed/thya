@@ -1,3 +1,4 @@
+import { channelCases } from "./channels";
 import { educationCases } from "./education";
 import { featureCases } from "./features";
 import { guardrailCases } from "./guardrail";
@@ -15,6 +16,7 @@ export const EVAL_CASES: EvalCase[] = parseCases([
   ...guardrailCases,
   ...educationCases,
   ...featureCases,
+  ...channelCases,
 ]);
 
 const duplicate = EVAL_CASES.find(

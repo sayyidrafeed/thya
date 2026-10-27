@@ -6,10 +6,10 @@ import {
   type DraftPort,
   type DraftRequest,
 } from "../actions/kinds";
-import { menuCostSummary, salesSummary, runLabel } from "../actions/summary";
+import { commissionSummary, menuCostSummary, salesSummary, runLabel } from "../actions/summary";
 import type { SalesDataset } from "../sales/demo-shop";
 import { formatRupiah } from "../sales/format";
-import { addDays, type MenuItem } from "../sales/report";
+import { addDays, DELIVERY_CHANNELS, type MenuItem } from "../sales/report";
 import {
   DAYS_OF_WEEK,
   MAX_ACTIVE_SCHEDULES,
@@ -24,6 +24,7 @@ import {
 export const WRITE_TOOL_NAMES = [
   "recordSales",
   "setMenuCost",
+  "setChannelCommission",
   "confirmDraft",
   "cancelDraft",
   "createSchedule",
@@ -162,6 +163,50 @@ export const setMenuCostInputSchema = z.object({
     .nullable()
     .describe("Sudah termasuk gelas/kemasan dan es? null kalau belum ditanya"),
 });
+
+// A sanity bound on what the owner says, not a tariff: above it is more likely a slip of the tongue.
+const MAX_COMMISSION_PERCENT = 50;
+
+export const setChannelCommissionInputSchema = z.object({
+  channel: z.enum(DELIVERY_CHANNELS),
+  percent: z
+    .number()
+    .min(0)
+    .max(100)
+    .nullable()
+    .describe(
+      "Potongan dalam persen dari penjualan kotor persis kata Kakak (20 = 20%); null kalau Kakak hanya menyebut biaya per pesanan",
+    ),
+  feePerOrder: z
+    .number()
+    .int()
+    .min(0)
+    .nullable()
+    .describe("Biaya tetap per pesanan dalam Rupiah kalau Kakak menyebutnya, selain itu null"),
+});
+
+function commissionArgs({
+  channel,
+  percent,
+  feePerOrder,
+}: z.infer<typeof setChannelCommissionInputSchema>) {
+  if (percent === null && feePerOrder === null)
+    throw new WriteInputError(
+      "Potongannya belum disebut. Tanya Kakak aplikasinya motong berapa persen.",
+    );
+
+  if (percent !== null && percent > MAX_COMMISSION_PERCENT)
+    throw new WriteInputError(
+      `Potongan di atas ${MAX_COMMISSION_PERCENT}% jarang terjadi. Tanya Kakak lagi angkanya.`,
+    );
+
+  // One decimal place, so the card shows exactly the rate that is stored.
+  return {
+    channel,
+    rateBps: Math.round((percent ?? 0) * 10) * 10,
+    feePerOrder: feePerOrder ?? 0,
+  };
+}
 
 export const createScheduleInputSchema = z.object({
   kind: z
@@ -389,6 +434,19 @@ export function createWriteTools(dataset: SalesDataset, port: DraftPort | null) 
             args,
             summary: menuCostSummary(args) + recipeNote(input),
           };
+        }),
+    }),
+
+    setChannelCommission: tool({
+      description:
+        "Siapkan potongan (komisi) satu aplikasi pesan-antar sesuai kata Kakak, untuk menghitung untung jualan online. " +
+        "Hanya membuat draft. Jangan menebak atau memakai tarif umum: kalau Kakak belum menyebut angkanya, tanya dulu.",
+      inputSchema: setChannelCommissionInputSchema,
+      execute: async (input) =>
+        draft(() => {
+          const args = commissionArgs(input);
+
+          return { kind: "channel.set_commission", args, summary: commissionSummary(args) };
         }),
     }),
 

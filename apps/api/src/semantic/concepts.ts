@@ -12,6 +12,8 @@ export const CONCEPT_IDS = [
   "operating_expense",
   "cash",
   "qris_in",
+  "channel_sales",
+  "app_commission",
 ] as const;
 
 export type ConceptId = (typeof CONCEPT_IDS)[number];
@@ -97,5 +99,22 @@ export const CONCEPTS: Record<ConceptId, Concept> = {
     whyItMatters:
       "Kalau dibandingkan dengan omzet, kelihatan berapa bagian jualan yang dibayar lewat QRIS dan berapa yang kemungkinan dibayar tunai.",
     related: ["revenue", "cash"],
+  },
+  // Decided 2026-10-27: delivery app sales come from screenshots and stay apart from omzet.
+  channel_sales: {
+    label: "jualan per saluran",
+    plain:
+      "Jualan per saluran itu omzet yang dipisah menurut asalnya: langsung di toko, GoFood, GrabFood, atau ShopeeFood. Jualan online dicatat terpisah dari omzet menu, supaya tidak terhitung dua kali.",
+    whyItMatters:
+      "Omzet online bisa besar, tapi sisanya bisa kecil setelah dipotong aplikasi. Kalau dipisah, kelihatan saluran mana yang paling banyak menyisakan untung.",
+    related: ["app_commission", "gross_margin"],
+  },
+  app_commission: {
+    label: "potongan aplikasi",
+    plain:
+      "Potongan aplikasi itu bagian penjualan yang diambil GoFood, GrabFood, atau ShopeeFood. Biasanya berupa persen dari penjualan, kadang ditambah biaya per pesanan.",
+    whyItMatters:
+      "Potongan ini mengurangi untung jualan online, jadi sisa untung per pesanan online biasanya lebih tipis daripada jualan langsung.",
+    related: ["channel_sales", "gross_profit"],
   },
 };

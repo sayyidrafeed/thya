@@ -15,6 +15,7 @@ import {
   summarizeSales,
   type DateRange,
 } from "../sales/report";
+import { compareChannels, describeChannels, noChannelDataMessage } from "../semantic/channels";
 import { CONCEPT_IDS, CONCEPTS, type ConceptId } from "../semantic/concepts";
 import {
   conceptText,
@@ -103,17 +104,22 @@ export const topMenuItemsInputSchema = z.object({
 
 export const dailySalesInputSchema = z.object(periodFields);
 
+export const compareChannelsInputSchema = z.object(periodFields);
+
 export const SALES_TOOL_NAMES = [
   "queryMetric",
   "explainConcept",
   "getTopMenuItems",
   "getDailySales",
+  "compareChannels",
 ] as const;
 
 export type SalesToolName = (typeof SALES_TOOL_NAMES)[number];
 
 // Every tool answers with a status instead of throwing, so the model can explain a refusal.
-export type ToolResult<T> = ({ status: "ok" } & T) | { status: "error"; message: string };
+type ToolError = { status: "error"; message: string };
+
+export type ToolResult<T> = ({ status: "ok" } & T) | ToolError;
 
 export type ToolGate = { exhausted: (name: SalesToolName) => boolean };
 
@@ -121,23 +127,30 @@ const BUDGET_SPENT =
   "Batas ambil data untuk pesan ini sudah habis. Susun jawaban sekarang dari hasil yang sudah ada.";
 
 // `events` holds what this business already saw; the tools append to it as they explain.
+// `deliveryImport`: whether delivery screenshots are read, so a missing-data answer only asks for
+// a screenshot Thya can actually read (U10).
 export function createSalesTools(
   dataset: SalesDataset,
   events: ConceptEvent[],
   gate: ToolGate = { exhausted: () => false },
+  deliveryImport = false,
 ) {
-  const { menu, records, payments, today, dataStart } = dataset;
+  const { menu, records, payments, channelSales, commissions, today, dataStart } = dataset;
 
-  function run<T extends object>(name: SalesToolName, compute: () => T): ToolResult<T> {
+  function guarded<T>(name: SalesToolName, compute: () => T): T | ToolError {
     if (gate.exhausted(name)) return { status: "error", message: BUDGET_SPENT };
 
     try {
-      return { status: "ok", ...compute() };
+      return compute();
     } catch (error) {
       if (error instanceof SalesQueryError) return { status: "error", message: error.message };
 
       throw error;
     }
+  }
+
+  function run<T extends object>(name: SalesToolName, compute: () => T): ToolResult<T> {
+    return guarded(name, () => ({ status: "ok" as const, ...compute() }));
   }
 
   function comparableRange(range: DateRange): DateRange | null {
@@ -279,6 +292,38 @@ export function createSalesTools(
           return {
             range: describeRange(range, dataset),
             days: days.map((day) => ({ ...day, revenue: formatRupiah(day.revenue) })),
+          };
+        }),
+    }),
+
+    compareChannels: tool({
+      description:
+        "Bandingkan jualan per saluran untuk satu periode: langsung di toko vs GoFood, GrabFood, ShopeeFood. " +
+        "Tiap saluran: omzet, potongan aplikasi, modal bahan, laba kotor, margin, dan sisa untung per Rp100.000. " +
+        `Untuk pertanyaan seperti "online vs makan di tempat, mana lebih untung?" (${termsFor("channel_sales").join(", ")}). ` +
+        "Sampaikan message saluran yang not_ready, best, estimateNote, coverageNote, dan explanation kalau tidak null.",
+      inputSchema: compareChannelsInputSchema,
+      execute: async (input) =>
+        guarded("compareChannels", () => {
+          const range = resolvePeriod(input, today, dataStart);
+          const lines = compareChannels({ menu, records, channelSales, commissions, range });
+
+          if (lines === null)
+            return {
+              status: "not_ready" as const,
+              message: noChannelDataMessage({ channelSales, importEnabled: deliveryImport }),
+            };
+
+          // Explained once per business, like any concept (semantic-education §3.2).
+          const explain = exposureLevel(events, "app_commission") === "new";
+
+          if (explain) events.push(...explainConceptEvents("app_commission"));
+
+          return {
+            status: "ok" as const,
+            range: describeRange(range, dataset),
+            ...describeChannels(lines, range),
+            explanation: explain ? CONCEPTS.app_commission.plain : null,
           };
         }),
     }),

@@ -34,6 +34,8 @@ export type AgentTurnDeps = {
   now: () => Date;
   // Gate G11: QRIS/GoPay screenshots are read only when this is on.
   paymentsImport: boolean;
+  // DELIVERY_IMPORT_ENABLED: delivery app sales screenshots are read too. Off when omitted.
+  deliveryImport?: boolean;
   // Asks for a compaction job once the thread passes its threshold (B1); none in tests.
   compact?: (businessId: string) => Promise<void>;
   // How long a turn may think before the owner gets a "still working" line; default INTERIM_AFTER_MS.
@@ -172,7 +174,9 @@ async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundR
     if (content.kind === "image") {
       if (content.caption) batch.texts.push(content.caption);
 
-      if (!deps.paymentsImport) continue;
+      const imports = { payments: deps.paymentsImport, delivery: deps.deliveryImport ?? false };
+
+      if (!imports.payments && !imports.delivery) continue;
 
       batch.tainted = true;
 
@@ -183,6 +187,7 @@ async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundR
           mediaId: content.mediaId,
           now: deps.now(),
           traceId: newTraceId(),
+          imports,
         },
       );
 
@@ -256,6 +261,7 @@ async function runAgent(
     drafts: tainted ? { ...drafts, confirmOpen: async () => TAINTED_CONFIRM } : drafts,
     attachments: attachmentPort(db, business.id, now),
     memory: await turnMemory(db, business.id, now),
+    deliveryImport: deps.deliveryImport ?? false,
   });
 
   await appendConceptEvents(

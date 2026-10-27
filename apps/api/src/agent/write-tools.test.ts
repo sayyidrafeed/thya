@@ -152,6 +152,62 @@ describe("setMenuCost (onboarding HPP, E8/E9)", () => {
   });
 });
 
+describe("setChannelCommission", () => {
+  test("freezes the owner's percent and fee per order into a draft with a code-written card", async () => {
+    const { port, created } = recordingPort();
+    const { setChannelCommission } = createWriteTools(dataset, port);
+
+    const result = await setChannelCommission.execute!(
+      { channel: "gofood", percent: 20, feePerOrder: 1_000 },
+      options,
+    );
+
+    expect(result).toMatchObject({ status: "draft" });
+    expect(created).toEqual([
+      {
+        kind: "channel.set_commission",
+        args: { channel: "gofood", rateBps: 2_000, feePerOrder: 1_000 },
+        summary: [
+          "Potongan GoFood: 20% + Rp1.000 per pesanan dari penjualan kotor.",
+          "Dipakai untuk hari yang screenshot-nya tidak menulis uang yang diterima.",
+        ].join("\n"),
+      },
+    ]);
+  });
+
+  test("keeps one decimal of a percent so the card shows what is stored", async () => {
+    const { port, created } = recordingPort();
+    const { setChannelCommission } = createWriteTools(dataset, port);
+
+    await setChannelCommission.execute!(
+      { channel: "grabfood", percent: 22.5, feePerOrder: null },
+      options,
+    );
+
+    expect(created[0]).toMatchObject({ args: { rateBps: 2_250, feePerOrder: 0 } });
+    expect(created[0]?.summary).toStartWith("Potongan GrabFood: 22,5% dari penjualan kotor.");
+  });
+
+  test("no figure, or an implausible one, asks the owner instead of drafting", async () => {
+    const { port, created } = recordingPort();
+    const { setChannelCommission } = createWriteTools(dataset, port);
+
+    const none = await setChannelCommission.execute!(
+      { channel: "shopeefood", percent: null, feePerOrder: null },
+      options,
+    );
+
+    const tooHigh = await setChannelCommission.execute!(
+      { channel: "shopeefood", percent: 70, feePerOrder: null },
+      options,
+    );
+
+    expect(none).toMatchObject({ status: "error" });
+    expect(tooHigh).toMatchObject({ status: "error" });
+    expect(created).toEqual([]);
+  });
+});
+
 describe("runTurn with a write tool", () => {
   test("returns the draft for the channel's card, and the summary's numbers count as grounded", async () => {
     const { port } = recordingPort();

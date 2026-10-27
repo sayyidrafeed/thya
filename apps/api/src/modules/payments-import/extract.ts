@@ -1,6 +1,7 @@
 import { generateText, tool, type LanguageModel } from "ai";
 import { z } from "zod";
 import { paymentMethod } from "../../db/schema";
+import { DELIVERY_CHANNELS, type DeliveryChannel } from "../../sales/report";
 
 // Business-features-plan S9: one forced tool call reads the picture; code owns the year, the
 // references and every check. The picture never enters the main agent's context (A8/A14).
@@ -55,7 +56,59 @@ export const extractionSchema = z.object({
   unreadableReason: z.string().nullable(),
 });
 
+// Decided 2026-10-27: a delivery app's sales summary rides the same single call and the same
+// routing point. Its fields join the schema only when DELIVERY_IMPORT_ENABLED is on, so the S9
+// call stays as tested while that gate is closed.
+const deliveryDaySchema = z.object({
+  day: z.number().nullable().describe("Tanggal (1-31) seperti tertulis; null kalau tidak terlihat"),
+  month: z.number().nullable().describe("Bulan (1-12) seperti tertulis; null kalau tidak terlihat"),
+  year: z
+    .number()
+    .nullable()
+    .describe("Tahun HANYA kalau tertulis di gambar; null kalau tidak tertulis (jangan menebak)"),
+  grossSales: z
+    .number()
+    .describe(
+      "Penjualan kotor tanggal itu dalam rupiah, sebelum potongan aplikasi. Rp350.000 = 350000",
+    ),
+  netReceived: z
+    .number()
+    .nullable()
+    .describe(
+      "Uang yang diterima toko setelah potongan aplikasi, HANYA kalau labelnya jelas (pendapatan bersih, total diterima, dana masuk). Ragu = null",
+    ),
+  orderCount: z
+    .number()
+    .nullable()
+    .describe("Jumlah pesanan tanggal itu; null kalau tidak tertulis"),
+});
+
+export const deliveryExtractionSchema = extractionSchema.extend({
+  documentKind: z
+    .enum([...extractionSchema.shape.documentKind.options, "delivery_sales"])
+    .describe(
+      `${extractionSchema.shape.documentKind.description}; delivery_sales = ringkasan penjualan dari aplikasi pesan-antar (GoBiz/GoFood, GrabMerchant/GrabFood, ShopeeFood)`,
+    ),
+  provider: z
+    .enum([...extractionSchema.shape.provider.unwrap().options, ...DELIVERY_CHANNELS])
+    .nullable()
+    .describe("gofood, grabfood, atau shopeefood untuk delivery_sales, sesuai aplikasi di gambar"),
+  deliveryDays: z
+    .array(deliveryDaySchema)
+    .describe(
+      "Untuk delivery_sales: satu item per tanggal yang angkanya terlihat; ringkasan satu tanggal = satu item. " +
+        "Ringkasan beberapa hari tanpa rincian per tanggal = kosong. Selain delivery_sales selalu kosong",
+    ),
+});
+
 export type RawExtraction = z.infer<typeof extractionSchema>;
+
+export type RawDeliveryDay = z.infer<typeof deliveryDaySchema>;
+
+const DELIVERY_RULES = [
+  "Ringkasan penjualan dari aplikasi pesan-antar (GoBiz, GrabMerchant, ShopeeFood) pakai documentKind delivery_sales dan provider sesuai aplikasinya.",
+  "Untuk delivery_sales, salin penjualan kotor, uang yang diterima toko, dan jumlah pesanan per tanggal persis seperti tertulis. Jangan menghitung potongan sendiri.",
+];
 
 const SYSTEM = [
   "Kamu mengekstrak data transaksi dari gambar yang dikirim pemilik warung (screenshot GoPay Merchant, QRIS, m-banking).",
@@ -85,6 +138,7 @@ export type ExtractedRow = {
 };
 
 export type Extraction =
+  | { status: "delivery_sales"; channel: DeliveryChannel | null; days: RawDeliveryDay[] }
   | {
       status: "ok";
       documentKind: "payment_history" | "settlement" | "bank_statement";
@@ -127,7 +181,10 @@ function normalizeTime(time: string | null): string | null {
   return `${hour.padStart(2, "0")}:${minute}`;
 }
 
-export function normalizeExtraction(raw: RawExtraction, today: string): ExtractedRow[] {
+export function normalizeExtraction(
+  raw: Pick<RawExtraction, "transactions">,
+  today: string,
+): ExtractedRow[] {
   const references = raw.transactions.map(
     (row) => row.reference?.replace(/^(ID|Ref|No\.?)\s*[:.]?\s*/i, "").trim() || null,
   );
@@ -160,15 +217,24 @@ export async function extractPayments(
     model: LanguageModel;
     mediaType: "image/jpeg" | "image/png";
     today: string;
+    // DELIVERY_IMPORT_ENABLED: also recognise a delivery app's sales summary.
+    delivery: boolean;
     abortSignal?: AbortSignal;
   },
 ): Promise<Extraction> {
-  const captured: RawExtraction[] = [];
+  const captured: (RawExtraction | z.infer<typeof deliveryExtractionSchema>)[] = [];
+  const description = "Simpan hasil ekstraksi gambar (belum disimpan ke data usaha).";
+
+  const record = async (input: (typeof captured)[number]) => {
+    captured.push(input);
+
+    return { status: "ok" };
+  };
 
   try {
     await generateText({
       model: options.model,
-      instructions: SYSTEM,
+      instructions: options.delivery ? [SYSTEM, ...DELIVERY_RULES].join("\n") : SYSTEM,
       messages: [
         {
           role: "user",
@@ -179,15 +245,9 @@ export async function extractPayments(
         },
       ],
       tools: {
-        recordExtraction: tool({
-          description: "Simpan hasil ekstraksi gambar (belum disimpan ke data usaha).",
-          inputSchema: extractionSchema,
-          execute: async (input) => {
-            captured.push(input);
-
-            return { status: "ok" };
-          },
-        }),
+        recordExtraction: options.delivery
+          ? tool({ description, inputSchema: deliveryExtractionSchema, execute: record })
+          : tool({ description, inputSchema: extractionSchema, execute: record }),
       },
       toolChoice: { type: "tool", toolName: "recordExtraction" },
       maxRetries: 1,
@@ -205,6 +265,13 @@ export async function extractPayments(
 
   if (raw.documentKind === "not_transactions" || raw.documentKind === "unreadable")
     return { status: raw.documentKind, message: EXTRACTION_REPLIES[raw.documentKind] };
+
+  if (raw.documentKind === "delivery_sales")
+    return {
+      status: "delivery_sales",
+      channel: DELIVERY_CHANNELS.find((channel) => channel === raw.provider) ?? null,
+      days: raw.deliveryDays,
+    };
 
   return {
     status: "ok",

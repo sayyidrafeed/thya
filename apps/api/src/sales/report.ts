@@ -27,6 +27,30 @@ export type SaleRecord = {
 // revenue: the owner may also record the same sale as a menu item.
 export type PaymentDay = { date: string; amount: number };
 
+// Delivery apps whose sales summary the owner forwards as a screenshot (decided 2026-10-27).
+export const DELIVERY_CHANNELS = ["gofood", "grabfood", "shopeefood"] as const;
+
+export type DeliveryChannel = (typeof DELIVERY_CHANNELS)[number];
+
+export const DELIVERY_CHANNEL_NAMES: Record<DeliveryChannel, string> = {
+  gofood: "GoFood",
+  grabfood: "GrabFood",
+  shopeefood: "ShopeeFood",
+};
+
+// One app's sales for one WIB day, kept apart from menu revenue like QRIS money in. `netReceived`
+// and `orderCount` only when the screenshot printed them.
+export type ChannelSaleDay = {
+  channel: DeliveryChannel;
+  date: string;
+  grossSales: number;
+  netReceived: number | null;
+  orderCount: number | null;
+};
+
+// The owner's own commission for one app: basis points of gross sales plus a fee per order.
+export type ChannelCommission = { channel: DeliveryChannel; rateBps: number; feePerOrder: number };
+
 export type DateRange = { start: string; end: string };
 
 export const PERIODS = [
@@ -207,7 +231,7 @@ function lookup(index: Map<string, MenuItem>, itemId: string): MenuItem {
   return item;
 }
 
-function marginPct(grossProfit: number, revenue: number): number {
+export function marginPct(grossProfit: number, revenue: number): number {
   return revenue === 0 ? 0 : Math.round((grossProfit / revenue) * 1000) / 10;
 }
 

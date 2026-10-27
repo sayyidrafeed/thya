@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { MenuCostArgs, SalesRecordArgs } from "../actions/kinds";
 import type { Db } from "../db/client";
 import { menuCosts, menuItems, transactions } from "../db/schema";
+import { channelSaleDays, commissionRates } from "../modules/channel-sales";
 import { paymentDays } from "../modules/payments-import";
 import { DEMO_HISTORY_DAYS, demoHourlySales, demoMenu, type SalesDataset } from "./demo-shop";
 import { addDays, jakartaDate, type MenuItem, type SaleRecord } from "./report";
@@ -105,6 +106,8 @@ export async function loadSalesDataset(
     menu,
     records,
     payments: await paymentDays(db, businessId, now),
+    channelSales: await channelSaleDays(db, businessId, today),
+    commissions: await commissionRates(db, businessId),
     today,
     dataStart: records[0]?.date ?? today,
     asOf: now,

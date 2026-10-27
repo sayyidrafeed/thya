@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { z } from "zod";
 import { formatRupiah } from "../sales/format";
-import { buildDemoSales } from "../sales/demo-shop";
+import { buildDemoSales, demoBusiness } from "../sales/demo-shop";
+import { runTurn } from "./run-turn";
+import { scriptedModel } from "./testing";
 import { createSalesTools, queryMetricInputSchema, topMenuItemsInputSchema } from "./tools";
 
 describe("tool input validation", () => {
@@ -159,6 +161,114 @@ describe("semantic tools", () => {
     expect(tooLong).toEqual({
       status: "error",
       message: "Rincian harian maksimal 31 hari. Pakai queryMetric untuk periode panjang.",
+    });
+  });
+
+  describe("compareChannels", () => {
+    const yesterday = { period: "yesterday", startDate: null, endDate: null } as const;
+
+    test("without delivery data it is not ready, and only asks for a screenshot Thya can read", async () => {
+      const off = await settle(
+        createSalesTools(dataset, []).compareChannels.execute!(yesterday, options),
+      );
+
+      const on = await settle(
+        createSalesTools(dataset, [], undefined, true).compareChannels.execute!(yesterday, options),
+      );
+
+      expect(off).toEqual({
+        status: "not_ready",
+        message:
+          "Thya belum bisa membaca penjualan GoFood, GrabFood, atau ShopeeFood, jadi jualan online dan langsung belum bisa dibandingkan.",
+      });
+      expect(on).toMatchObject({ status: "not_ready" });
+      expect("message" in on && on.message).toContain("Kirim screenshot");
+    });
+
+    test("compares direct sales with GoFood after commission, and explains the commission once", async () => {
+      const withGofood = {
+        ...dataset,
+        channelSales: [
+          {
+            channel: "gofood" as const,
+            date: "2026-10-24",
+            grossSales: 350_000,
+            netReceived: 280_000,
+            orderCount: 25,
+          },
+        ],
+      };
+
+      const events: Parameters<typeof createSalesTools>[1] = [];
+      const { compareChannels } = createSalesTools(withGofood, events);
+      const first = await settle(compareChannels.execute!(yesterday, options));
+      const second = await settle(compareChannels.execute!(yesterday, options));
+
+      if (first.status !== "ok" || second.status !== "ok") throw new Error("expected ok");
+
+      expect(first.channels.map((line) => line.label)).toEqual(["Langsung di toko", "GoFood"]);
+      expect(first.channels[1]).toMatchObject({
+        revenue: "Rp350.000",
+        appCommission: "Rp70.000",
+        estimated: true,
+      });
+      expect(first.estimateNote).toContain("perkiraan");
+      expect(first.explanation).toStartWith("Potongan aplikasi itu");
+      expect(second.explanation).toBeNull();
+      expect(events).toContainEqual({ concept: "app_commission", kind: "explained" });
+    });
+
+    test("a reply copying the figures passes the number check; made-up margins fall back to a code-written comparison (Q2)", async () => {
+      const withGofood = {
+        ...dataset,
+        channelSales: [
+          {
+            channel: "gofood" as const,
+            date: "2026-10-24",
+            grossSales: 350_000,
+            netReceived: 280_000,
+            orderCount: 25,
+          },
+        ],
+      };
+
+      const output = await settle(
+        createSalesTools(withGofood, []).compareChannels.execute!(yesterday, options),
+      );
+
+      if (output.status !== "ok") throw new Error("expected ok");
+
+      const [direct, gofood] = output.channels;
+
+      if (direct?.status !== "ok" || gofood?.status !== "ok") throw new Error("expected figures");
+
+      const turn = (texts: string[]) =>
+        runTurn({
+          model: scriptedModel(
+            texts.flatMap((text) => [{ tool: "compareChannels", input: yesterday }, { text }]),
+          ),
+          business: demoBusiness,
+          dataset: withGofood,
+          messages: [{ role: "user", content: "kemarin gofood vs makan di tempat untung mana?" }],
+          conceptEvents: [],
+          now: new Date("2026-10-25T10:00:00+07:00"),
+        });
+
+      const copied = await turn([
+        `Kemarin GoFood omzet *${gofood.revenue}*, dipotong ${gofood.appCommission}, laba kotor sekitar ${gofood.grossProfit} (perkiraan), margin ${gofood.margin}. Langsung di toko margin ${direct.margin}.`,
+      ]);
+
+      expect(copied.check.action).toBe("none");
+
+      const invented = await turn([
+        "GoFood margin 71,3%, langsung 12,9%.",
+        "GoFood margin 72,4%, langsung 13,1%.",
+      ]);
+
+      expect(invented.check.action).toBe("template");
+      expect(invented.reply).toContain(
+        `- GoFood: omzet Rp350.000, laba kotor ${gofood.grossProfit} (margin ${gofood.margin}, perkiraan)`,
+      );
     });
   });
 

@@ -55,6 +55,8 @@ export type TurnInput = {
   attachments?: AttachmentPort;
   // Profile block and rolling summary (B2, B1). Without it the prompt is the static rules only.
   memory?: TurnMemory;
+  // DELIVERY_IMPORT_ENABLED, so compareChannels only asks for screenshots Thya can read.
+  deliveryImport?: boolean;
 };
 
 // The draft a write tool prepared this turn; the channel shows it as a card with Ya/Ubah/Batal.
@@ -95,9 +97,14 @@ async function attempt(
   const rounds = new Map<string, number>();
 
   const tools = {
-    ...createSalesTools(input.dataset, conceptEvents, {
-      exhausted: (name) => (rounds.get(name) ?? 0) >= (TOOL_ROUND_LIMITS.get(name) ?? Infinity),
-    }),
+    ...createSalesTools(
+      input.dataset,
+      conceptEvents,
+      {
+        exhausted: (name) => (rounds.get(name) ?? 0) >= (TOOL_ROUND_LIMITS.get(name) ?? Infinity),
+      },
+      input.deliveryImport ?? false,
+    ),
     ...createWriteTools(input.dataset, input.drafts ?? null),
     ...createChartTool(input.dataset, input.attachments ?? null, attachments),
   };

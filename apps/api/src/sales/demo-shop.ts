@@ -2,6 +2,8 @@ import {
   addDays,
   jakartaDate,
   jakartaHours,
+  type ChannelCommission,
+  type ChannelSaleDay,
   type MenuItem,
   type PaymentDay,
   type SaleRecord,
@@ -152,6 +154,8 @@ export type SalesDataset = {
   menu: MenuItem[];
   records: SaleRecord[];
   payments: PaymentDay[];
+  channelSales: ChannelSaleDay[];
+  commissions: ChannelCommission[];
   today: string;
   dataStart: string;
   asOf: Date;
@@ -187,7 +191,16 @@ export function buildDemoSales(now: Date): SalesDataset {
     }
   }
 
-  return { menu: demoMenu, records, payments: [], today, dataStart, asOf: now };
+  return {
+    menu: demoMenu,
+    records,
+    payments: [],
+    channelSales: [],
+    commissions: [],
+    today,
+    dataStart,
+    asOf: now,
+  };
 }
 
 export type DemoHourlySale = { date: string; itemId: string; soldAt: Date; quantity: number };

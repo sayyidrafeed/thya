@@ -37,6 +37,22 @@ export const TERMS: Term[] = [
   { phrase: "qris", concepts: ["qris_in"], formal: false, locale: "id" },
   { phrase: "uang qris", concepts: ["qris_in"], formal: false, locale: "id" },
   { phrase: "pembayaran qris", concepts: ["qris_in"], formal: false, locale: "id" },
+  { phrase: "gofood", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "go food", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "grabfood", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "grab", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "shopeefood", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "shopee food", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "online", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "jualan online", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "ojol", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "makan di tempat", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "dine in", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "jualan langsung", concepts: ["channel_sales"], formal: false, locale: "id" },
+  { phrase: "komisi", concepts: ["app_commission"], formal: true, locale: "id" },
+  { phrase: "komisi aplikasi", concepts: ["app_commission"], formal: true, locale: "id" },
+  { phrase: "potongan aplikasi", concepts: ["app_commission"], formal: false, locale: "id" },
+  { phrase: "potongan ojol", concepts: ["app_commission"], formal: false, locale: "id" },
 ];
 
 export function normalizeTerm(phrase: string): string {

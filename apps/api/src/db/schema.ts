@@ -20,7 +20,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { MENU_CATEGORIES } from "../sales/report";
+import { DELIVERY_CHANNELS, MENU_CATEGORIES } from "../sales/report";
 import { CONCEPT_IDS } from "../semantic/concepts";
 
 const createdAt = () => timestamp({ withTimezone: true }).notNull().defaultNow();
@@ -156,6 +156,65 @@ export const payments = pgTable(
       .on(table.businessId, table.imageSha256, table.sourceRow)
       .where(sql`${table.imageSha256} IS NOT NULL`),
     check("payment_amount_positive", sql`${table.amount} > 0`),
+  ],
+);
+
+// modules/channel-sales (decided 2026-10-27): one delivery app's sales per WIB day, read from the
+// owner's screenshot. Apart from menu revenue for the same reason as payments.
+export const deliveryChannel = pgEnum("delivery_channel", DELIVERY_CHANNELS);
+export const channelSaleSource = pgEnum("channel_sale_source", ["screenshot"]);
+
+export const channelSales = pgTable(
+  "channel_sales",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    businessId: uuid()
+      .notNull()
+      .references(() => businesses.id),
+    channel: deliveryChannel().notNull(),
+    soldOn: date().notNull(),
+    grossSales: integer().notNull(),
+    netReceived: integer(),
+    orderCount: integer(),
+    source: channelSaleSource().notNull(),
+    imageSha256: text(),
+    sourceRow: integer(),
+    draftId: uuid(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    // A second screenshot of the same app and day never counts twice.
+    uniqueIndex("channel_sales_day_unique").on(table.businessId, table.channel, table.soldOn),
+    index().on(table.businessId, table.imageSha256),
+    check("channel_gross_not_negative", sql`${table.grossSales} >= 0`),
+    check(
+      "channel_net_within_gross",
+      sql`${table.netReceived} IS NULL OR (${table.netReceived} >= 0 AND ${table.netReceived} <= ${table.grossSales})`,
+    ),
+    check(
+      "channel_orders_not_negative",
+      sql`${table.orderCount} IS NULL OR ${table.orderCount} >= 0`,
+    ),
+  ],
+);
+
+// The commission the owner says one app takes, used for days whose screenshot shows no net amount.
+export const channelCommissions = pgTable(
+  "channel_commissions",
+  {
+    businessId: uuid()
+      .notNull()
+      .references(() => businesses.id),
+    channel: deliveryChannel().notNull(),
+    rateBps: integer().notNull(),
+    feePerOrder: integer().notNull(),
+    draftId: uuid(),
+    updatedAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.businessId, table.channel] }),
+    check("commission_rate_range", sql`${table.rateBps} >= 0 AND ${table.rateBps} <= 10000`),
+    check("commission_fee_not_negative", sql`${table.feePerOrder} >= 0`),
   ],
 );
 

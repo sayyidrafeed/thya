@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { MockLanguageModelV4 } from "ai/test";
-import { scriptedModel } from "../../agent/testing";
+import { scriptedModel, type ScriptStep } from "../../agent/testing";
 import {
   extractPayments,
   normalizeExtraction,
@@ -172,7 +172,12 @@ describe("extractPayments", () => {
       { text: "ok" },
     ]);
 
-    const result = await extractPayments(image, { model, mediaType: "image/png", today: TODAY });
+    const result = await extractPayments(image, {
+      model,
+      mediaType: "image/png",
+      today: TODAY,
+      delivery: false,
+    });
 
     expect(result).toMatchObject({ status: "ok", rows: [{ date: "2026-10-24", reference: "X1" }] });
   });
@@ -190,15 +195,92 @@ describe("extractPayments", () => {
     });
 
     expect(
-      await extractPayments(image, { model: notTx, mediaType: "image/png", today: TODAY }),
+      await extractPayments(image, {
+        model: notTx,
+        mediaType: "image/png",
+        today: TODAY,
+        delivery: false,
+      }),
     ).toMatchObject({
       status: "not_transactions",
     });
     expect(
-      await extractPayments(image, { model: failing, mediaType: "image/png", today: TODAY }),
+      await extractPayments(image, {
+        model: failing,
+        mediaType: "image/png",
+        today: TODAY,
+        delivery: false,
+      }),
     ).toEqual({
       status: "error",
       message: "Thya belum bisa baca gambarnya sekarang, coba kirim lagi sebentar ya Kak.",
+    });
+  });
+
+  describe("delivery app sales summaries (DELIVERY_IMPORT_ENABLED)", () => {
+    const summary = (provider: string): ScriptStep => ({
+      tool: "recordExtraction",
+      input: {
+        ...raw([]),
+        documentKind: "delivery_sales",
+        provider,
+        deliveryDays: [
+          {
+            day: 26,
+            month: 10,
+            year: null,
+            grossSales: 350_000,
+            netReceived: null,
+            orderCount: 25,
+          },
+        ],
+      },
+    });
+
+    const read = (step: ScriptStep, delivery: boolean) =>
+      extractPayments(image, {
+        model: scriptedModel([step, { text: "ok" }]),
+        mediaType: "image/png",
+        today: TODAY,
+        delivery,
+      });
+
+    test("a GoFood summary comes back as its channel and the days as printed", async () => {
+      expect(await read(summary("gofood"), true)).toEqual({
+        status: "delivery_sales",
+        channel: "gofood",
+        days: [
+          {
+            day: 26,
+            month: 10,
+            year: null,
+            grossSales: 350_000,
+            netReceived: null,
+            orderCount: 25,
+          },
+        ],
+      });
+    });
+
+    test("an app the model cannot name has no channel, so nothing is drafted for it", async () => {
+      expect(await read(summary("other"), true)).toMatchObject({
+        status: "delivery_sales",
+        channel: null,
+      });
+    });
+
+    test("with the gate off the kind is not in the schema, so the call cannot return it", async () => {
+      expect(await read(summary("gofood"), false)).toMatchObject({ status: "error" });
+    });
+
+    test("a payment screenshot still reads as payments with the gate on", async () => {
+      expect(
+        await read({ tool: "recordExtraction", input: { ...raw([{}]), deliveryDays: [] } }, true),
+      ).toMatchObject({
+        status: "ok",
+        documentKind: "payment_history",
+        rows: [{ amount: 18_000 }],
+      });
     });
   });
 });

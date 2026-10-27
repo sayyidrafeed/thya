@@ -13,6 +13,7 @@ export {
   type ExtractedRow,
   type Extraction,
   type PaymentMethod,
+  type RawDeliveryDay,
 } from "./extract";
 
 export {

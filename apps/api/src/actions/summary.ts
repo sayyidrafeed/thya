@@ -1,5 +1,12 @@
-import { formatRupiah } from "../sales/format";
-import { formatDateId, jakartaDate, jakartaTime, weekdayName } from "../sales/report";
+import { formatPercent, formatRupiah } from "../sales/format";
+import {
+  DELIVERY_CHANNEL_NAMES,
+  formatDateId,
+  jakartaDate,
+  jakartaTime,
+  weekdayName,
+  type ChannelCommission,
+} from "../sales/report";
 import type { MenuCostArgs, SalesRecordArgs } from "./kinds";
 
 // Draft cards and results are written by code, so every number the owner confirms is exact.
@@ -32,6 +39,19 @@ function packagingNote(includesPackaging: boolean | null): string {
   if (includesPackaging === null) return "";
 
   return includesPackaging ? ", sudah termasuk gelas/kemasan" : ", belum termasuk gelas/kemasan";
+}
+
+export function commissionText({ rateBps, feePerOrder }: ChannelCommission): string {
+  const rate = formatPercent(rateBps / 100);
+
+  return feePerOrder > 0 ? `${rate} + ${formatRupiah(feePerOrder)} per pesanan` : rate;
+}
+
+export function commissionSummary(commission: ChannelCommission): string {
+  return [
+    `Potongan ${DELIVERY_CHANNEL_NAMES[commission.channel]}: ${commissionText(commission)} dari penjualan kotor.`,
+    "Dipakai untuk hari yang screenshot-nya tidak menulis uang yang diterima.",
+  ].join("\n");
 }
 
 export function menuCostSummary(args: MenuCostArgs): string {
