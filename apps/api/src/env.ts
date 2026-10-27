@@ -1,5 +1,6 @@
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
+import { parseServiceAccount } from "./modules/sheets";
 
 const MISSING_KEY =
   "NETRA_API_KEY belum diisi. Salin .env.example ke .env di root repo, lalu isi key-nya.";
@@ -57,6 +58,22 @@ export const env = createEnv({
       .string()
       .regex(/^v\d+\.\d+$/)
       .default("v23.0"),
+    // Google service account key (the downloaded JSON) for the sheet tools. Unset = no sheet
+    // tools at all (decision U10); set but not a key = the server refuses to start.
+    GOOGLE_SERVICE_ACCOUNT_JSON: z
+      .string()
+      .optional()
+      .transform((json, ctx) => {
+        if (json === undefined) return null;
+
+        try {
+          return parseServiceAccount(json);
+        } catch (error) {
+          ctx.addIssue({ code: "custom", message: error instanceof Error ? error.message : "" });
+
+          return z.NEVER;
+        }
+      }),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

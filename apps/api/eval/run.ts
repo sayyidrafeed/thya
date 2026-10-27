@@ -10,6 +10,7 @@ import { asSchema, type ModelMessage, type Tool } from "ai";
 import type { DraftPort, DraftRequest } from "../src/actions/kinds";
 import { promptFacts, runTurn, type TurnResult } from "../src/agent";
 import { buildInstructions } from "../src/agent/prompt";
+import { fakeGoogle, fakeSheetsAccess, memorySheetPort } from "../src/agent/sheet-testing";
 import { createSalesTools, queryMetricInputSchema } from "../src/agent/tools";
 import { createWriteTools } from "../src/agent/write-tools";
 import { chatModel } from "../src/llm";
@@ -20,6 +21,7 @@ import type { SalesDataset } from "../src/sales/demo-shop";
 import { loadSalesDataset } from "../src/sales/repository";
 import type { ConceptEvent } from "../src/semantic/exposure";
 import { EVAL_CASES, EVAL_NOW, toolCall, type EvalCase } from "./cases";
+import { sheetFixtures } from "./cases/sheets";
 import { passHat } from "./compare";
 import { gradeConversation, type Grade, type Turn } from "./graders";
 import { writeReport } from "./report";
@@ -142,6 +144,8 @@ async function runTrial(testCase: EvalCase, trial: number): Promise<Trial> {
   let inputTokens = 0;
   let cachedInputTokens = 0;
   const drafts = memoryDrafts();
+  // Every case runs with the sheet tools offered, as production does once the service account is set.
+  const sheets = memorySheetPort(await fakeSheetsAccess(fakeGoogle(sheetFixtures()).fetcher)).port;
 
   const result = (error: string | null, grades: Grade[]): Trial => ({
     id: testCase.id,
@@ -168,6 +172,7 @@ async function runTrial(testCase: EvalCase, trial: number): Promise<Trial> {
         conceptEvents,
         now: EVAL_NOW,
         drafts: drafts.port,
+        sheets,
       });
 
       messages.push(...turn.responseMessages);

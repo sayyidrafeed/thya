@@ -2,6 +2,7 @@ import { generateText, isStepCount, type LanguageModel, type ModelMessage } from
 import { z } from "zod";
 import type { DraftPort } from "../actions/kinds";
 import type { BusinessProfile } from "../modules/business";
+import type { SheetPort } from "../modules/sheets";
 import type { SalesDataset } from "../sales/demo-shop";
 import type { ConceptEvent } from "../semantic/exposure";
 import { ungroundedNumbers, type UngroundedNumber } from "./postcheck";
@@ -16,6 +17,7 @@ import {
 import { fallbackReply } from "./fallback";
 import { createSalesTools, type SalesToolName } from "./tools";
 import { createWriteTools } from "./write-tools";
+import { createSheetTools, sheetAccessReply } from "./sheet-tools";
 import { createChartTool, type Attachment, type AttachmentPort } from "./chart-tool";
 
 export const MAX_STEPS = 5;
@@ -57,6 +59,8 @@ export type TurnInput = {
   memory?: TurnMemory;
   // DELIVERY_IMPORT_ENABLED, so compareChannels only asks for screenshots Thya can read.
   deliveryImport?: boolean;
+  // This business's Google Sheets (S5, S6). Without it the sheet tools are not offered (U10).
+  sheets?: SheetPort;
 };
 
 // The draft a write tool prepared this turn; the channel shows it as a card with Ya/Ubah/Batal.
@@ -96,6 +100,10 @@ async function attempt(
   const attachments: Attachment[] = [];
   const rounds = new Map<string, number>();
 
+  const sheets = input.sheets
+    ? createSheetTools(input.dataset, input.sheets, input.drafts ?? null)
+    : null;
+
   const tools = {
     ...createSalesTools(
       input.dataset,
@@ -105,8 +113,9 @@ async function attempt(
       },
       input.deliveryImport ?? false,
     ),
-    ...createWriteTools(input.dataset, input.drafts ?? null),
+    ...createWriteTools(input.dataset, sheets ? sheets.drafts : (input.drafts ?? null)),
     ...createChartTool(input.dataset, input.attachments ?? null, attachments),
+    ...sheets?.tools,
   };
 
   const result = await generateText({
@@ -306,6 +315,11 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   let tries = 1;
   const first = await attempt(input, abortSignal, { feedback: null, requireTool: false });
   attempts.push(first);
+
+  const accessReply = sheetAccessReply(first.toolCalls);
+
+  if (accessReply !== null) return finish(first, accessReply, "template", []);
+
   const firstCheck = grounded(input, first);
 
   if (firstCheck.ungrounded.length === 0 && firstCheck.reply)

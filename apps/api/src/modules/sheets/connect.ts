@@ -127,7 +127,9 @@ export async function connectSheet(
   };
 }
 
-export type DailyMetric = "revenue" | "items_sold";
+export const DAILY_METRICS = ["revenue", "items_sold"] as const;
+
+export type DailyMetric = (typeof DAILY_METRICS)[number];
 
 export type AppendTarget = {
   spreadsheetId: string;

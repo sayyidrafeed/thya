@@ -3,6 +3,7 @@ import type { Delivery } from "./channels/whatsapp/deliver";
 import type { Db } from "./db/client";
 import { env, whatsapp } from "./env";
 import { loadAttachment } from "./modules/attachments";
+import { createSheetsAccess } from "./modules/sheets";
 import { createBoss, startJobs } from "./jobs";
 import { chatModel } from "./llm";
 
@@ -31,6 +32,10 @@ export async function startWorkers(db: Db, databaseUrl: string, work: boolean) {
     language: env.WHATSAPP_TEMPLATE_LANGUAGE,
   };
 
+  // One access per process, so the Google token cache is shared by every turn.
+  const account = env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const sheets = account === null ? null : createSheetsAccess(account);
+
   await startJobs(boss, {
     db,
     work,
@@ -44,6 +49,7 @@ export async function startWorkers(db: Db, databaseUrl: string, work: boolean) {
             now,
             paymentsImport: env.PAYMENTS_IMPORT_ENABLED,
             deliveryImport: env.DELIVERY_IMPORT_ENABLED,
+            sheets,
           },
     schedules: delivery === null ? null : { db, now, templates },
   });

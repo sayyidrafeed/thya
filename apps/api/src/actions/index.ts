@@ -12,7 +12,7 @@ import {
   type Claim,
 } from "../modules/drafts";
 import { formatRupiah } from "../sales/format";
-import { DELIVERY_CHANNEL_NAMES } from "../sales/report";
+import { DELIVERY_CHANNEL_NAMES, jakartaDate } from "../sales/report";
 import { recordChatSales, setMenuCost } from "../sales/repository";
 import {
   cancelSchedule,
@@ -22,6 +22,12 @@ import {
   scheduleSummary,
   specOf,
 } from "../modules/schedules";
+import {
+  runSheetAppend,
+  runSheetImport,
+  SheetActionError,
+  type SheetsAccess,
+} from "../modules/sheets";
 import { commissionText, dayLabel, runLabel } from "./summary";
 import { storedDraftSchema, type DraftOutcome, type DraftPort, type StoredDraft } from "./kinds";
 
@@ -41,11 +47,20 @@ const FAILED = "Maaf Kak, belum berhasil disimpan. Coba sebutkan lagi sebentar l
 const NOTHING_OPEN = "Belum ada yang menunggu konfirmasi, Kak.";
 const CANCELLED = "Oke Kak, dibatalkan. Tidak ada yang disimpan.";
 
-async function execute(
-  db: Db,
-  { businessId, draftId, now }: { businessId: string; draftId: string; now: Date },
-  draft: StoredDraft,
-) {
+// `sheets`: Google access for sheet.append; null where the deployment has no service account.
+type DraftRun = { businessId: string; draftId: string; now: Date; sheets?: SheetsAccess | null };
+
+async function execute(db: Db, { businessId, draftId, now, sheets }: DraftRun, draft: StoredDraft) {
+  if (draft.kind === "sheet.append")
+    return runSheetAppend(db, sheets ?? null, {
+      businessId,
+      args: draft.args,
+      today: jakartaDate(now),
+    });
+
+  if (draft.kind === "sheet.import")
+    return runSheetImport(db, { businessId, draftId, args: draft.args });
+
   if (draft.kind === "schedule.create") {
     const row = await createSchedule(db, { businessId, spec: draft.args, now });
 
@@ -96,17 +111,15 @@ async function execute(
 }
 
 // Runs a stored draft once. Called for a tapped "Ya" (by code) and for a typed "ya" (confirmDraft).
-export async function runDraft(
-  db: Db,
-  { businessId, draftId, now }: { businessId: string; draftId: string; now: Date },
-): Promise<DraftOutcome> {
+export async function runDraft(db: Db, run: DraftRun): Promise<DraftOutcome> {
+  const { businessId, draftId, now } = run;
   const claim = await claimDraft(db, { businessId, draftId, now });
 
   if (claim.status !== "claimed") return { status: "none", message: NOT_RUN[claim.status] };
 
   try {
     const stored = storedDraftSchema.parse({ kind: claim.draft.kind, args: claim.draft.args });
-    const message = await execute(db, { businessId, draftId, now }, stored);
+    const message = await execute(db, run, stored);
     await finishDraft(db, draftId, { status: "done", outcome: { message } });
 
     return { status: "done", message };
@@ -115,8 +128,11 @@ export async function runDraft(
     console.error("draft failed:", reason);
     await finishDraft(db, draftId, { status: "failed", outcome: { error: reason } });
 
-    // A schedule rule broken since the draft (a duplicate, too many) is told as it is.
-    return { status: "failed", message: error instanceof ScheduleError ? error.message : FAILED };
+    // A schedule rule broken since the draft (a duplicate, too many) or a sheet Thya can no
+    // longer write is told as it is.
+    const told = error instanceof ScheduleError || error instanceof SheetActionError;
+
+    return { status: "failed", message: told ? error.message : FAILED };
   }
 }
 
@@ -131,7 +147,12 @@ export async function cancelOpenDraft(
 
 export function dbDraftPort(
   db: Db,
-  { businessId, traceId, now }: { businessId: string; traceId: string; now: Date },
+  {
+    businessId,
+    traceId,
+    now,
+    sheets,
+  }: { businessId: string; traceId: string; now: Date; sheets?: SheetsAccess | null },
 ): DraftPort {
   return {
     create: async ({ kind, args, summary }) => {
@@ -145,7 +166,7 @@ export function dbDraftPort(
 
       return open === null
         ? { status: "none", message: NOTHING_OPEN }
-        : runDraft(db, { businessId, draftId: open.id, now });
+        : runDraft(db, { businessId, draftId: open.id, now, sheets });
     },
 
     listSchedules: async () =>

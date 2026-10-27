@@ -21,6 +21,7 @@ import {
   unprocessedInbound,
   type Outbound,
 } from "../modules/conversation";
+import { dbSheetPort, type SheetsAccess } from "../modules/sheets";
 import { recordFailedTurn, recordTurn } from "../modules/traces";
 import { jakartaDate } from "../sales/report";
 import { loadSalesDataset } from "../sales/repository";
@@ -37,6 +38,8 @@ export type AgentTurnDeps = {
   paymentsImport: boolean;
   // DELIVERY_IMPORT_ENABLED: delivery app sales screenshots are read too. Off when omitted.
   deliveryImport?: boolean;
+  // Google service account for the sheet tools (S5, S6); null or absent = no sheet tools (U10).
+  sheets?: SheetsAccess | null;
   // Asks for a compaction job once the thread passes its threshold (B1); none in tests.
   compact?: (businessId: string) => Promise<void>;
   // How long a turn may think before the owner gets a "still working" line; default INTERIM_AFTER_MS.
@@ -153,7 +156,7 @@ async function answerTap(
   business: Business,
   { draftId, action }: { draftId: string; action: string },
 ) {
-  const where = { businessId: business.id, draftId, now: deps.now() };
+  const where = { businessId: business.id, draftId, now: deps.now(), sheets: deps.sheets };
 
   if (action === "yes") return { reply: (await runDraft(deps.db, where)).message, edit: false };
 
@@ -255,7 +258,7 @@ async function runAgent(
   const now = deps.now();
   const known = await loadConceptEvents(db, business.id);
   const owner: ModelMessage = { role: "user", content: texts.join("\n") };
-  const drafts = dbDraftPort(db, { businessId: business.id, traceId, now });
+  const drafts = dbDraftPort(db, { businessId: business.id, traceId, now, sheets: deps.sheets });
 
   const turn = await runTurn({
     model: deps.model,
@@ -269,6 +272,7 @@ async function runAgent(
     attachments: attachmentPort(db, business.id, now),
     memory: await turnMemory(db, business.id, now),
     deliveryImport: deps.deliveryImport ?? false,
+    sheets: deps.sheets ? dbSheetPort(db, business.id, deps.sheets) : undefined,
   });
 
   await appendConceptEvents(

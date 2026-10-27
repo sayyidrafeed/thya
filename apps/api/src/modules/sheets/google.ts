@@ -111,7 +111,12 @@ export function createAccessTokenProvider(
 
     const parsed = tokenResponseSchema.safeParse(response.ok ? await response.json() : null);
 
-    if (!parsed.success) return null;
+    if (!parsed.success) {
+      // Owners only hear "share the sheet"; ops needs to see that the key itself was refused.
+      console.error(`google token refused: HTTP ${response.status}`);
+
+      return null;
+    }
 
     cached = {
       token: parsed.data.access_token,

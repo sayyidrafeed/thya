@@ -2,6 +2,7 @@ import { z } from "zod";
 import { PAYMENT_METHODS } from "../modules/payments-import";
 import { scheduleSpecSchema, type ScheduleSpec } from "../modules/schedules";
 import { DELIVERY_CHANNELS } from "../sales/report";
+import { sheetAppendArgs, sheetImportArgs } from "../modules/sheets";
 
 // What each draft kind freezes at draft time (decision Q1, engine-plan B3). The executor runs these
 // stored arguments, never new ones from the model, and parses them again at that boundary.
@@ -89,7 +90,9 @@ export type DraftRequest =
       kind: "channel.set_commission";
       args: z.infer<typeof channelCommissionArgs>;
       summary: string;
-    };
+    }
+  | { kind: "sheet.append"; args: z.infer<typeof sheetAppendArgs>; summary: string }
+  | { kind: "sheet.import"; args: z.infer<typeof sheetImportArgs>; summary: string };
 
 export type DraftKind = DraftRequest["kind"];
 
@@ -102,6 +105,8 @@ export const storedDraftSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("payments.import"), args: paymentsImportArgs }),
   z.object({ kind: z.literal("channel_sales.import"), args: channelSalesImportArgs }),
   z.object({ kind: z.literal("channel.set_commission"), args: channelCommissionArgs }),
+  z.object({ kind: z.literal("sheet.append"), args: sheetAppendArgs }),
+  z.object({ kind: z.literal("sheet.import"), args: sheetImportArgs }),
 ]);
 
 export type StoredDraft = z.infer<typeof storedDraftSchema>;

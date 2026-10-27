@@ -1,5 +1,5 @@
 import type { MenuItem } from "../../sales/report";
-import { parseSheetDate, type Cell } from "./parse";
+import { describeHeader, findColumnByName, parseSheetDate, type Cell } from "./parse";
 
 // S6: one row per menu per day with columns Tanggal, Menu, Jumlah and optional Harga.
 
@@ -32,20 +32,53 @@ const HEADERS = {
   price: ["harga", "harga satuan", "price"],
 };
 
+// Columns the owner named when the headers are not the usual ones; null = guess from the header.
+export type ImportColumnNames = Record<keyof ImportColumns, string | null>;
+
+const GUESS_ALL: ImportColumnNames = { date: null, menu: null, quantity: null, price: null };
+
 function findHeader(header: Cell[], names: string[]): number | null {
   const index = header.findIndex((cell) => names.includes(normalizeText(cell.text)));
 
   return index === -1 ? null : index;
 }
 
-function importColumns(header: Cell[]): ImportColumns | null {
-  const date = findHeader(header, HEADERS.date);
-  const menu = findHeader(header, HEADERS.menu);
-  const quantity = findHeader(header, HEADERS.quantity);
+type ColumnsResult =
+  | { status: "ok"; columns: ImportColumns }
+  | { status: "error"; message: string };
 
-  if (date === null || menu === null || quantity === null) return null;
+function importColumns(header: Cell[], named: ImportColumnNames): ColumnsResult {
+  const unmatched = Object.values(named).find(
+    (words) => words !== null && findColumnByName(header, words) === null,
+  );
 
-  return { date, menu, quantity, price: findHeader(header, HEADERS.price) };
+  if (unmatched !== undefined && unmatched !== null) {
+    return {
+      status: "error",
+      message: `Kolom "${unmatched}" nggak ada di sheet, Kak (${describeHeader(header)}).`,
+    };
+  }
+
+  const pick = (role: keyof ImportColumns) => {
+    const words = named[role];
+
+    return words === null
+      ? findHeader(header, HEADERS[role])
+      : (findColumnByName(header, words)?.index ?? null);
+  };
+
+  const date = pick("date");
+  const menu = pick("menu");
+  const quantity = pick("quantity");
+
+  if (date === null || menu === null || quantity === null) {
+    return {
+      status: "error",
+      message: `Kolom Tanggal, Menu, dan Jumlah belum ketemu di baris pertama sheet, Kak (${describeHeader(header)}).`,
+    };
+  }
+
+  return { status: "ok", columns: { date, menu, quantity, price: pick("price") } };
 }
 
 function normalizeText(text: string): string {
@@ -54,13 +87,15 @@ function normalizeText(text: string): string {
 
 const RUPIAH_TEXT = /^(?:rp\.?\s*)?(\d{1,3}(?:\.\d{3})+|\d+)$/;
 
-// Numbers arrive as numbers (UNFORMATTED_VALUE); text like "Rp18.000" is still accepted.
+// Quantities and rupiah prices are whole and positive. Numbers arrive as numbers
+// (UNFORMATTED_VALUE); text like "Rp18.000" is still accepted.
 function parseAmount(cell: Cell): number | null {
-  if (cell.number !== null) return cell.number;
-
   const match = RUPIAH_TEXT.exec(normalizeText(cell.text));
 
-  return match?.[1] === undefined ? null : Number(match[1].replaceAll(".", ""));
+  const amount =
+    cell.number ?? (match?.[1] === undefined ? null : Number(match[1].replaceAll(".", "")));
+
+  return amount !== null && Number.isInteger(amount) && amount > 0 ? amount : null;
 }
 
 function isBlank(row: Cell[]): boolean {
@@ -71,6 +106,7 @@ type RowContext = {
   columns: ImportColumns;
   menuByName: Map<string, MenuItem>;
   today: string;
+  costSince: ReadonlyMap<string, string>;
 };
 
 function parseRow(row: Cell[], sourceRow: number, context: RowContext): ImportRow | SkippedRow {
@@ -88,7 +124,7 @@ function parseRow(row: Cell[], sourceRow: number, context: RowContext): ImportRo
 
   const quantity = parseAmount(row[columns.quantity] ?? empty);
 
-  if (quantity === null || !Number.isInteger(quantity) || quantity <= 0) {
+  if (quantity === null) {
     return { row: sourceRow, reason: "jumlah harus bilangan bulat lebih dari 0" };
   }
 
@@ -96,8 +132,13 @@ function parseRow(row: Cell[], sourceRow: number, context: RowContext): ImportRo
   const hasPrice = priceCell !== undefined && priceCell.text.trim() !== "";
   const sheetPrice = hasPrice ? parseAmount(priceCell) : null;
 
-  if (hasPrice && (sheetPrice === null || sheetPrice <= 0)) {
-    return { row: sourceRow, reason: "harga tidak terbaca" };
+  if (hasPrice && sheetPrice === null) return { row: sourceRow, reason: "harga tidak terbaca" };
+
+  const costSince = context.costSince.get(item.id);
+
+  // Every stored sale needs the menu's cost on its date (costOn in sales/repository).
+  if (costSince !== undefined && date < costSince) {
+    return { row: sourceRow, reason: "modal menu belum tercatat di tanggal itu" };
   }
 
   return {
@@ -113,10 +154,13 @@ function parseRow(row: Cell[], sourceRow: number, context: RowContext): ImportRo
 }
 
 // `values` is the whole tab, header first. Row numbers are 1-based like the sheet itself.
+// `costSince`: the first date each menu item has a cost per portion; earlier rows are skipped.
 export function parseImportRows(
   values: Cell[][],
   menu: MenuItem[],
   today: string,
+  named: ImportColumnNames = GUESS_ALL,
+  costSince: ReadonlyMap<string, string> = new Map(),
 ): ImportParseResult {
   const [header, ...body] = values;
   const dataRows = body.filter((row) => !isBlank(row)).length;
@@ -132,19 +176,15 @@ export function parseImportRows(
     };
   }
 
-  const columns = importColumns(header);
+  const found = importColumns(header, named);
 
-  if (columns === null) {
-    return {
-      status: "error",
-      message: "Kolom Tanggal, Menu, dan Jumlah belum ketemu di baris pertama sheet, Kak.",
-    };
-  }
+  if (found.status === "error") return found;
 
   const context: RowContext = {
-    columns,
+    columns: found.columns,
     menuByName: new Map(menu.map((item) => [normalizeText(item.name), item])),
     today,
+    costSince,
   };
 
   const rows: ImportRow[] = [];

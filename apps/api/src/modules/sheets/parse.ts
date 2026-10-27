@@ -165,6 +165,49 @@ export function guessColumnMap(header: Cell[]): ColumnMap | null {
   return { date, revenue, itemsSold: findColumn(header, ITEMS_SOLD_HEADERS, taken) };
 }
 
+const MAX_HEADER_NAMES = 20;
+const MAX_HEADER_LENGTH = 40;
+
+// Header text is untrusted cell content on its way to the model, so it is capped.
+export function headerNames(header: Cell[]): string[] {
+  return header
+    .flatMap((cell) => {
+      const name = cell.text.trim().slice(0, MAX_HEADER_LENGTH);
+
+      return name === "" ? [] : [name];
+    })
+    .slice(0, MAX_HEADER_NAMES);
+}
+
+// For a message that asks the owner which column to use.
+export function describeHeader(header: Cell[]): string {
+  const names = headerNames(header);
+
+  return names.length === 0 ? "baris pertama kosong" : `kolom yang ada: ${names.join(", ")}`;
+}
+
+const COLUMN_LETTERS = /^[a-z]{1,2}$/;
+
+// The owner names a column by its header ("Pemasukan") or its letter ("kolom C"); a header wins.
+export function findColumnByName(header: Cell[], words: string): SheetColumn | null {
+  const wanted = words
+    .trim()
+    .toLowerCase()
+    .replaceAll(/\s+/g, " ")
+    .replace(/^kolom /, "");
+
+  const byHeader = header.findIndex((cell) => normalizeHeader(cell) === wanted);
+
+  if (byHeader !== -1) return { index: byHeader, header: header[byHeader]?.text.trim() ?? "" };
+
+  if (!COLUMN_LETTERS.test(wanted)) return null;
+
+  const index =
+    [...wanted.toUpperCase()].reduce((sum, letter) => sum * 26 + letter.charCodeAt(0) - 64, 0) - 1;
+
+  return { index, header: header[index]?.text.trim() || columnLetter(index) };
+}
+
 export function columnLetter(index: number): string {
   let rest = index + 1;
   let letters = "";

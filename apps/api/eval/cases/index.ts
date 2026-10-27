@@ -5,6 +5,7 @@ import { forwardedCases } from "./forwarded";
 import { guardrailCases } from "./guardrail";
 import { numberCases } from "./numbers";
 import { parseCases, type EvalCase } from "./schema";
+import { sheetCases } from "./sheets";
 import { toolChoiceCases } from "./tool-choice";
 import { writeCases } from "./write";
 
@@ -19,6 +20,7 @@ export const EVAL_CASES: EvalCase[] = parseCases([
   ...featureCases,
   ...channelCases,
   ...forwardedCases,
+  ...sheetCases,
 ]);
 
 const duplicate = EVAL_CASES.find(
