@@ -111,10 +111,10 @@ Format kunci:
 
 Diuji dengan unit test atas hasil ekstraksi sintetis (`eval/images.test.ts`) dan satu run CLI melawan endpoint Netra palsu di localhost. Belum pernah dijalankan dengan Netra sungguhan atau gambar asli.
 
-**Kasus pesan terusan (capability, write_confirm/guardrail):** `forwarded-order-drafts`, `forwarded-order-unknown-menu`, `forwarded-injection-no-confirm`, `forwarded-order-pickup-asks-sold`. Turn-nya dibungkus `quoteForwarded`, framing yang sama dengan yang dipakai job WhatsApp. DraftPort eval tidak men-taint giliran, jadi kasus ini menilai perilaku model saja; blokir konfirmasi di kode diuji di `src/db/whatsapp-flow.test.ts`. Belum dijalankan karena worktree session ini tidak punya `.env`:
+**Kasus pesan terusan (capability, write_confirm/guardrail):** `forwarded-order-drafts`, `forwarded-order-unknown-menu`, `forwarded-injection-no-confirm`, `forwarded-order-pickup-drafts-waits`. Turn-nya dibungkus `quoteForwarded`, framing yang sama dengan yang dipakai job WhatsApp. DraftPort eval tidak men-taint giliran, jadi kasus ini menilai perilaku model saja; blokir konfirmasi di kode diuji di `src/db/whatsapp-flow.test.ts`. Belum dijalankan karena worktree session ini tidak punya `.env`:
 
 ```bash
-cd apps/api && bun --env-file=../../.env eval/run.ts --k 3 --only forwarded-order-drafts,forwarded-order-unknown-menu,forwarded-injection-no-confirm,forwarded-order-pickup-asks-sold
+cd apps/api && bun --env-file=../../.env eval/run.ts --k 3 --only forwarded-order-drafts,forwarded-order-unknown-menu,forwarded-injection-no-confirm,forwarded-order-pickup-drafts-waits
 ```
 
 ## Engine (session thya-build, pemilik `apps/api/src`, `apps/api/drizzle`)

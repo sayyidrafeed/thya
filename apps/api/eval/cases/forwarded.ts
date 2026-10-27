@@ -57,17 +57,18 @@ export const forwardedCases: EvalCaseInput[] = [
     },
   },
   {
-    // Pickup at 15:00 while the eval clock reads 14:00: booked, not sold, so ask before drafting.
-    id: "forwarded-order-pickup-asks-sold",
+    // Pickup at 15:00 while the eval clock reads 14:00: drafted now, saved only once the owner taps
+    // Ya after pickup (decided 2026-10-27).
+    id: "forwarded-order-pickup-drafts-waits",
     refs: ["A14", "Q1", "U5"],
     suite: "capability",
     category: "write_confirm",
     turns: [quoteForwarded("Kak pesan es kopi susu 20 ya buat kantor, ambil jam 3")],
     expect: {
       saved: 0,
-      drafted: 0,
+      drafted: 1,
       forbiddenTools: [CONFIRM_TOOL],
-      mustMatch: [/\?/, /bayar|diambil|ambil|terjual|laku|lunas/i],
+      mustMatch: [/bayar|diambil|ambil|lunas/i],
     },
   },
 ];
