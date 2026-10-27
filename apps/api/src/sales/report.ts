@@ -1,4 +1,5 @@
-export const MENU_CATEGORIES = ["kopi", "non-kopi", "makanan"] as const;
+// For any shop: a drink that is not coffee is non-kopi, all food is makanan, anything else lainnya.
+export const MENU_CATEGORIES = ["kopi", "non-kopi", "makanan", "lainnya"] as const;
 
 export type MenuCategory = (typeof MENU_CATEGORIES)[number];
 

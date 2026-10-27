@@ -160,7 +160,7 @@ push ke main → CI (fmt, lint, typecheck, test)
 - Project `thya` → Application `thya-api`, Provider **Docker**: image `ghcr.io/sayyidrafeed/thya-api:main`, Registry URL `ghcr.io`. Kalau package GHCR dibuat public, username dan password dikosongkan. Kalau private, isi username GitHub dan PAT (classic) dengan scope `read:packages` saja.
 - Env (tab Environment, tidak ada di repo maupun image): `NETRA_API_KEY`, `NETRA_BASE_URL=https://api.netraruntime.com/v1`, `NETRA_MODEL=deepseek/deepseek-v4.1-flash`, `PORT=3001`, `WEB_ORIGINS=https://thya.veterantech.id`, lalu `DATABASE_URL` begitu kode DB masuk.
 - Domain: `thya-api.sayyidrafee.com`, path `/`, container port `3001`, HTTPS Let's Encrypt.
-- Health check: `GET /health` → `{"ok":true}`.
+- Health check: `GET /health` menjawab `status`, `db`, `jobs`, `whatsapp`, `queueLagSeconds`, dan `webhookDrops` (lihat [Membaca pesan yang dibuang webhook](#membaca-pesan-yang-dibuang-webhook)). HTTP 503 hanya kalau DB tidak terjangkau.
 - Rollback: ubah image ke `ghcr.io/sayyidrafeed/thya-api:sha-<commit-sebelumnya>`, lalu Deploy. Kembalikan ke `:main` setelah perbaikan di-push.
 
 ### Aplikasi `web` (landing + `/demo`) di Dokploy
@@ -202,6 +202,108 @@ ssh thya 'sudo docker service update --publish-rm "published=3000,target=3000,mo
 1. Buka Web Console di panel, lalu login `ubuntu` atau `rafee`.
 2. Cek `sudo sshd -t`, `sudo ufw status`, dan `sudo fail2ban-client status sshd`.
 3. Kalau sshd tidak mau start karena konfigurasi: pindahkan `/etc/ssh/sshd_config.d/00-thya-hardening.conf` ke `/root/`, lalu `sudo systemctl restart ssh`. Setelah masalahnya ketemu, kembalikan file itu.
+
+## Webhook, onboarding pilot, dan reset nomor demo
+
+Ditambahkan 2026-10-28. Script onboarding dan reset menulis ke database. Di produksi, Rafee yang menjalankannya, bukan agent.
+
+### Membaca pesan yang dibuang webhook
+
+Setiap request webhook yang ditolak, dan setiap perubahan di dalam webhook yang dibuang, menulis satu baris log JSON dan menambah satu hitungan. Baris itu hanya berisi kode alasan, contohnya `{"event":"webhook-drop","reason":"bad_signature"}`. Isi pesan, nomor telepon, `wamid`, dan signature tidak pernah ikut.
+
+Hitungan per alasan ada di `/health` API, di field `webhookDrops`:
+
+```bash
+curl -s https://thya-api.sayyidrafee.com/health
+# ... "webhookDrops":{"since":"2026-10-28T01:00:00.000Z","counts":{"bad_verify_token":0,"bad_signature":3, ...}}
+```
+
+`since` adalah waktu proses API mulai menghitung, dalam UTC. Hitungan kembali ke 0 setiap deploy atau restart, jadi bandingkan `since` dengan jam uji. Worker tidak menerima webhook, sehingga `/health` worker selalu menulis `webhookDrops: null`.
+
+Rekap dari log tanpa membaca isi pesan:
+
+```bash
+ssh thya-ops 'sudo docker service logs --since 24h thya-api-nc08wz 2>&1 | grep -o "\"reason\":\"[a-z_]*\"" | sort | uniq -c'
+```
+
+| Kode | Yang terjadi | Penyebab yang paling mungkin | Tindakan |
+|---|---|---|---|
+| `bad_verify_token` | Verifikasi webhook (GET) dijawab 403 | Verify token di Meta beda dengan `WHATSAPP_VERIFY_TOKEN`, atau ada yang membuka URL webhook | Samakan token di Meta → WhatsApp → Configuration |
+| `bad_signature` | POST tanpa signature atau dengan signature salah, dijawab 401 | `WHATSAPP_APP_SECRET` bukan App Secret milik app Meta yang mengirim. Kalau angkanya naik satu setiap penguji mengirim pesan, penyebabnya ini | Bandingkan App Secret di Meta (App settings → Basic) dengan env. Cek nama dan panjang env saja |
+| `bad_json` | Body bukan JSON, dijawab 400 | Request bukan dari Meta | Abaikan kalau jarang |
+| `schema_mismatch` | JSON bertanda tangan sah, tapi bentuknya tidak dikenali kode. Dijawab 200 lalu dibuang | Meta mengirim bentuk baru, seperti pesan terusan sebelum perbaikan 27 Okt | Perbaiki skema di `apps/api/src/channels/whatsapp/inbound.ts`. Ambil contoh payload dari tombol Test di dashboard Meta, bukan dari log |
+| `other_phone_number` | Perubahan untuk `phone_number_id` lain, dibuang | `WHATSAPP_PHONE_NUMBER_ID` beda dengan nomor yang dikirimi pesan, atau ada nomor lain di app yang sama | Samakan env dengan Phone number ID di Meta → WhatsApp → API Setup |
+| `other_field` | Perubahan di field selain `messages`, dibuang | App juga berlangganan field lain, misalnya status template | Aman diabaikan selama pesan masuk normal |
+
+Urutan cek kalau pesan uji tidak dibalas:
+
+1. Kalau semua hitungan tetap 0 dan jumlah `inbound_messages` tidak bertambah, Meta tidak mengirim ke server. Cek langganan field `messages`, callback URL, dan daftar nomor penerima nomor test. Jumlah baris dicek dengan `ssh thya-ops 'sudo docker exec $(sudo docker ps -q -f name=thya-db) psql -U thya -d thya -Atc "select count(*) from inbound_messages"'`.
+2. Kalau `bad_signature` atau `other_phone_number` naik satu per pesan uji, perbaiki env yang disebut di tabel, lalu deploy ulang.
+3. Kalau hitungan tetap 0 tapi `inbound_messages` bertambah, pesan sudah tersimpan. Cek `jobs` dan `queueLagSeconds` di `/health`, lalu log `agent-turn` di worker.
+
+### Menjalankan script di produksi
+
+Image `thya-api` tidak membawa folder `apps/api/scripts`, jadi folder itu disalin ke container yang sedang jalan. Env container sudah berisi `DATABASE_URL`. Dari root repo di Mac, pada commit yang sedang ter-deploy:
+
+```bash
+ssh thya 'mkdir -p /tmp/thya-ops'
+scp -r apps/api/scripts thya:/tmp/thya-ops/
+ssh thya
+CID=$(sudo docker ps -q -f name=thya-api)
+sudo docker cp /tmp/thya-ops/scripts "$CID":/app/apps/api/
+```
+
+Folder itu hilang sendiri di deploy berikutnya. Hapus `/tmp/thya-ops` di VPS setelah selesai.
+
+### Onboarding pemilik pilot
+
+Prasyarat:
+
+- Backup Postgres sudah aktif dan lulus uji restore (bagian [Backup](#backup)), karena ini data UMKM sungguhan.
+- Consent tertulis pemilik sudah dicatat sebelum onboarding: teks yang disetujui, tanggal, dan nama pemilik. Tempat penyimpanannya mengikuti keputusan P2, yang masih terbuka. Tanpa consent, onboarding tidak dijalankan.
+- Migrasi `0007_pilot_onboarding` sudah ter-deploy. Migrasi ini jalan otomatis saat `thya-api` start.
+
+Langkah:
+
+1. Salin `apps/api/scripts/pilot-onboarding.example.json` ke folder di luar repo, misalnya `~/thya-pilot/warung-x.json`. File ini akan berisi nomor asli pemilik, jadi jangan di-commit.
+2. Isi `phone` (boleh diawali 08 atau 62), `business` (nama, jenis, kota, jam buka dan jam tutup 0 sampai 24), dan `menu`.
+   - `category`: minuman kopi masuk `kopi`, minuman lain seperti teh, jeruk, dan air mineral masuk `non-kopi`, semua makanan termasuk camilan dan paket masuk `makanan`, dan yang bukan makanan atau minuman seperti biaya bungkus masuk `lainnya`.
+   - `cost` wajib untuk setiap menu. Satu menu tanpa modal membuat semua giliran usaha itu gagal sampai cakupan modal parsial (E10) dibangun. Tulis `"source": "owner"` kalau pemilik tahu angkanya. Kalau tidak tahu, tawarkan separuh, sepertiga, atau seperempat harga jual seperti jalur chat, lalu tulis angkanya dengan `"source": "estimate"`.
+3. Pastikan folder `scripts` sudah ada di container (bagian [Menjalankan script di produksi](#menjalankan-script-di-produksi)). Salin file ke VPS dan ke container, jalankan, lalu hapus kedua salinan file itu:
+
+```bash
+scp ~/thya-pilot/warung-x.json thya:/tmp/thya-ops/pilot.json
+ssh thya
+CID=$(sudo docker ps -q -f name=thya-api)
+sudo docker cp /tmp/thya-ops/pilot.json "$CID":/tmp/pilot.json
+sudo docker exec -w /app/apps/api "$CID" bun scripts/onboard-business.ts /tmp/pilot.json
+sudo docker exec -u root "$CID" rm /tmp/pilot.json
+rm /tmp/thya-ops/pilot.json
+```
+
+4. Output yang benar diawali `Usaha pilot dibuat: <nama> (<id>).` lalu `Menu baru: ...`. File yang salah ditolak dengan daftar field yang perlu diperbaiki, dan tidak ada yang ditulis. Usaha pilot tidak pernah mendapat transaksi seed. `phone:register` untuk nomor pilot gagal dengan pesan `is not the demo shop or a copy of it`.
+5. Untuk menambah menu, tambahkan ke file yang sama lalu jalankan lagi. Hanya menu baru yang masuk. Kalau harga, kategori, atau modal di file beda dengan yang tersimpan, script menulis `Tidak diubah karena beda dengan yang tersimpan: ...` dan tidak mengubahnya. Pemilik bisa mengubah modal lewat chat. Harga jual belum bisa diubah lewat chat (F5b).
+6. Nomor yang sudah didaftarkan sebagai salinan demo lewat `phone:register` ditolak. Pakai nomor lain.
+7. Minta pemilik mengirim "halo". Balasan Thya harus memakai nama usahanya, bukan Kopi Senja.
+
+### Reset nomor demo
+
+Reset hanya berlaku untuk nomor tim atau presenter yang didaftarkan lewat `phone:register`, yaitu salinan Kopi Senja. Script menolak usaha pilot dan nomor yang belum terdaftar, dan hanya menyentuh satu usaha.
+
+1. Kalau angka latensi gladi masih dibutuhkan, ambil dulu dari `inbound_messages` dan `outbound_messages`. Reset menghapus baris keduanya untuk nomor itu.
+2. Pastikan tidak ada yang sedang chat dari nomor itu.
+3. Pastikan folder `scripts` sudah ada di container (bagian [Menjalankan script di produksi](#menjalankan-script-di-produksi)), lalu jalankan tanpa flag. Tanpa flag, script hanya mencetak jumlah baris per tabel yang akan dihapus dan tidak menghapus apa pun.
+
+```bash
+ssh thya
+CID=$(sudo docker ps -q -f name=thya-api)
+sudo docker exec -w /app/apps/api "$CID" bun scripts/reset-demo-phone.ts 62812xxxxxxxx
+```
+
+4. Kalau angkanya masuk akal, jalankan lagi dengan `--confirm` di akhir perintah. Dalam satu transaksi, script menghapus draft, jadwal, `payments`, `channel_sales`, `channel_commissions`, `sheet_connections`, transaksi dan modal selain seed, riwayat percakapan (`messages`, `conversation_summaries`, `concept_events`, `inbound_messages`, `outbound_messages`), dan gambar di `attachments`. Setelah itu seed demo diisi ulang sampai 30 hari ke depan.
+5. Yang tetap ada: profil usaha, menu, transaksi dan modal seed, serta trace (`agent_turns`, `agent_steps`), supaya gladi yang gagal masih bisa dibaca.
+
+Di lokal, perintah yang sama tersedia dari `apps/api` sebagai `bun run pilot:onboard <file>` dan `bun run phone:reset <nomor> [--confirm]`. Keduanya memakai `DATABASE_URL` di `.env` root.
 
 ## Setup dari nol (ringkas)
 

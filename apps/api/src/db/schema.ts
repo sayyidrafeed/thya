@@ -39,6 +39,8 @@ export const businesses = pgTable("businesses", {
   closeHour: smallint().notNull(),
   whatsappPhone: text().unique(),
   isDemo: boolean().notNull().default(false),
+  // A tester's copy of the demo shop (phone:register): seed rows, resettable. Never a pilot owner's.
+  isDemoCopy: boolean().notNull().default(false),
   createdAt: createdAt(),
 });
 

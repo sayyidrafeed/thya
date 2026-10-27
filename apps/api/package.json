@@ -15,6 +15,8 @@
     "db:migrate": "bun --env-file=../../.env scripts/migrate.ts",
     "db:seed": "bun --env-file=../../.env scripts/seed-demo.ts",
     "phone:register": "bun --env-file=../../.env scripts/register-phone.ts",
+    "phone:reset": "bun --env-file=../../.env scripts/reset-demo-phone.ts",
+    "pilot:onboard": "bun --env-file=../../.env scripts/onboard-business.ts",
     "eval:compare": "bun eval/compare.ts",
     "eval:from-trace": "bun --env-file=../../.env eval/from-trace.ts",
     "eval:images": "bun --env-file=../../.env eval/images.ts"

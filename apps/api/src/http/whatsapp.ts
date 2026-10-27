@@ -1,6 +1,12 @@
 import { Elysia } from "elysia";
 import type { PgBoss } from "pg-boss";
-import { deliveryStatuses, inboundMessages, webhookSchema } from "../channels/whatsapp/inbound";
+import { countWebhookDrops } from "../channels/whatsapp/drops";
+import {
+  deliveryStatuses,
+  droppedChanges,
+  inboundMessages,
+  webhookSchema,
+} from "../channels/whatsapp/inbound";
 import { verifySignature } from "../channels/whatsapp/signature";
 import type { Db } from "../db/client";
 import { enqueueAgentTurn } from "../jobs";
@@ -11,26 +17,37 @@ export type WebhookConfig = { appSecret: string; verifyToken: string; phoneNumbe
 // Harness §4: verify, store (the wamid key drops redeliveries), enqueue, answer 200 fast. The model
 // never runs inside the request.
 export function whatsappWebhook(db: Db, boss: PgBoss, config: WebhookConfig) {
+  const recordDrop = countWebhookDrops();
+
   return new Elysia()
     .get("/webhook/whatsapp", ({ query, status }) => {
       const ok =
         query["hub.mode"] === "subscribe" && query["hub.verify_token"] === config.verifyToken;
 
-      return ok ? (query["hub.challenge"] ?? "") : status(403, "forbidden");
+      if (ok) return query["hub.challenge"] ?? "";
+
+      recordDrop("bad_verify_token");
+
+      return status(403, "forbidden");
     })
     .post(
       "/webhook/whatsapp",
       async ({ request, status }) => {
         const raw = await request.text();
 
-        if (!verifySignature(raw, request.headers.get("x-hub-signature-256"), config.appSecret))
+        if (!verifySignature(raw, request.headers.get("x-hub-signature-256"), config.appSecret)) {
+          recordDrop("bad_signature");
+
           return status(401, "invalid signature");
+        }
 
         let json: object;
 
         try {
           json = JSON.parse(raw);
         } catch {
+          recordDrop("bad_json");
+
           return status(400, "invalid json");
         }
 
@@ -38,7 +55,13 @@ export function whatsappWebhook(db: Db, boss: PgBoss, config: WebhookConfig) {
 
         // A signed payload of a shape Thya does not read (account updates, new fields) is not an
         // error worth Meta's retries.
-        if (!parsed.success) return { ok: true };
+        if (!parsed.success) {
+          recordDrop("schema_mismatch");
+
+          return { ok: true };
+        }
+
+        for (const reason of droppedChanges(parsed.data, config.phoneNumberId)) recordDrop(reason);
 
         const messages = inboundMessages(parsed.data, config.phoneNumberId);
         const statuses = deliveryStatuses(parsed.data, config.phoneNumberId);
@@ -46,7 +69,7 @@ export function whatsappWebhook(db: Db, boss: PgBoss, config: WebhookConfig) {
         await recordDeliveryStatuses(db, statuses);
 
         for (const failed of statuses.filter((status) => status.status === "failed"))
-          console.error(`whatsapp delivery failed: ${failed.error} (${failed.wamid})`);
+          console.error(`whatsapp delivery failed: ${failed.error}`);
 
         await recordInbound(
           db,

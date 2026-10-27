@@ -50,6 +50,13 @@
       "when": 1793036494657,
       "tag": "0006_channel_sales",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793120875638,
+      "tag": "0007_pilot_onboarding",
+      "breakpoints": true
     }
   ]
 }

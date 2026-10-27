@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { MenuCostArgs, SalesRecordArgs } from "../actions/kinds";
 import type { Db } from "../db/client";
-import { menuCosts, menuItems, transactions } from "../db/schema";
+import { businesses, menuCosts, menuItems, transactions } from "../db/schema";
 import { channelSaleDays, commissionRates } from "../modules/channel-sales";
 import { paymentDays } from "../modules/payments-import";
 import { DEMO_HISTORY_DAYS, demoHourlySales, demoMenu, type SalesDataset } from "./demo-shop";
@@ -58,10 +58,11 @@ async function loadMenu(db: Db, businessId: string, today: string) {
 // The cost per portion in force on `date`. Partial cost coverage (E10) arrives with HPP
 // onboarding; until then a sale without a known cost is an error, never a silent 0.
 function costOn(history: CostHistory, itemId: string, date: string): Cost {
-  const inForce = (history.get(itemId) ?? []).findLast((cost) => cost.validFrom <= date);
+  const costs = history.get(itemId) ?? [];
+  // Before the first cost on record the owner had no other, e.g. yesterday's sale typed after onboarding.
+  const inForce = costs.findLast((cost) => cost.validFrom <= date) ?? costs[0];
 
-  if (inForce === undefined)
-    throw new Error(`menu item ${itemId} has no cost per portion on ${date}`);
+  if (inForce === undefined) throw new Error(`menu item ${itemId} has no cost per portion`);
 
   return inForce;
 }
@@ -120,6 +121,15 @@ export async function hasSales(db: Db, businessId: string): Promise<boolean> {
 
 // Idempotent through the partial unique index on seed rows.
 export async function seedDemoSales(db: Db, businessId: string, now: Date) {
+  const [owner] = await db
+    .select({ isDemo: businesses.isDemo, isDemoCopy: businesses.isDemoCopy })
+    .from(businesses)
+    .where(eq(businesses.id, businessId));
+
+  // Seed rows are sample data: a pilot owner's books must never mix with them.
+  if (!owner?.isDemo && !owner?.isDemoCopy)
+    throw new Error(`seed: business ${businessId} is not the demo shop or a copy of it`);
+
   const today = jakartaDate(now);
   const from = addDays(today, -(DEMO_HISTORY_DAYS - 1));
 

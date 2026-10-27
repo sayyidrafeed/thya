@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { DeliveryStatus } from "../../modules/conversation";
+import type { DropReason } from "./drops";
 
 // Only the fields Thya reads; everything else in Meta's payload passes through untouched.
 export const messageSchema = z.object({
@@ -72,13 +73,32 @@ export type InboundMessage = {
 
 type Webhook = z.infer<typeof webhookSchema>;
 
+type Change = Webhook["entry"][number]["changes"][number];
+
+// Account and template updates arrive on other fields; another number can share the Meta app.
+function dropReason(change: Change, phoneNumberId: string): DropReason | null {
+  if (change.field !== "messages") return "other_field";
+
+  const target = change.value.metadata?.phone_number_id ?? phoneNumberId;
+
+  return target === phoneNumberId ? null : "other_phone_number";
+}
+
 function ownChanges(body: Webhook, phoneNumberId: string) {
   return body.entry
     .flatMap((entry) => entry.changes)
-    .filter((change) => change.field === "messages")
-    .filter(
-      (change) => (change.value.metadata?.phone_number_id ?? phoneNumberId) === phoneNumberId,
-    );
+    .filter((change) => dropReason(change, phoneNumberId) === null);
+}
+
+// One reason per change ownChanges leaves out, so the route logs and counts each exactly once.
+export function droppedChanges(body: Webhook, phoneNumberId: string): DropReason[] {
+  return body.entry
+    .flatMap((entry) => entry.changes)
+    .flatMap((change) => {
+      const reason = dropReason(change, phoneNumberId);
+
+      return reason === null ? [] : [reason];
+    });
 }
 
 // Statuses carry no owner message, so they yield nothing here (see deliveryStatuses).

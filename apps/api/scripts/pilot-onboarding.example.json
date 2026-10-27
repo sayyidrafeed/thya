@@ -1,0 +1,48 @@
+{
+  "phone": "6280000000000",
+  "business": {
+    "name": "Warung Makan Contoh",
+    "kind": "warung makan",
+    "city": "Kota Contoh",
+    "openHour": 7,
+    "closeHour": 21
+  },
+  "menu": [
+    {
+      "name": "Nasi Ayam Goreng",
+      "category": "makanan",
+      "price": 18000,
+      "cost": { "amount": 9000, "source": "owner" }
+    },
+    {
+      "name": "Nasi Telur Balado",
+      "category": "makanan",
+      "price": 12000,
+      "cost": { "amount": 5500, "source": "owner" }
+    },
+    {
+      "name": "Tempe Mendoan",
+      "category": "makanan",
+      "price": 2000,
+      "cost": { "amount": 1000, "source": "estimate" }
+    },
+    {
+      "name": "Es Teh Manis",
+      "category": "non-kopi",
+      "price": 4000,
+      "cost": { "amount": 1000, "source": "owner" }
+    },
+    {
+      "name": "Kopi Hitam",
+      "category": "kopi",
+      "price": 4000,
+      "cost": { "amount": 1500, "source": "owner" }
+    },
+    {
+      "name": "Biaya Bungkus",
+      "category": "lainnya",
+      "price": 1000,
+      "cost": { "amount": 700, "source": "owner" }
+    }
+  ]
+}
