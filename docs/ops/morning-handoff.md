@@ -74,6 +74,49 @@ Semua temuan di atas sudah dikirim ke thya-build.
 
 TL;DR: 70 kasus dan tooling U1/U2/U3/U7/U8 jalan; baseline dan run terakhir tersimpan. Slice malam ini menaikkan write, jadwal, dan grafik ke hampir 3/3. Status BLOCKED karena bug format `items_sold` di `src` dan jawaban "balik modal" yang memakai angka pengganti, dan keduanya sudah dikirim ke thya-build.
 
+### 27 Okt: harness G11 untuk screenshot asli, dan kasus pesan terusan
+
+**Harness G11.** Untuk memutuskan apakah S9 boleh dinyalakan (`PAYMENTS_IMPORT_ENABLED=1`).
+
+```bash
+cd apps/api && bun run eval:images                 # folder default eval/images/, K = 5
+cd apps/api && bun run eval:images <folder> --k 5
+```
+
+- Taruh JPG/PNG di `apps/api/eval/images/`. Folder ini gitignored; screenshot asli dan kuncinya tidak boleh di-commit. Kalau bisa, pakai gambar yang sudah lewat WhatsApp (JPEG terkompresi), karena itu yang dibaca produksi.
+- Setiap gambar butuh kunci jawaban `<nama>.expected.json` di sebelahnya. Gambar tanpa kunci, atau kunci yang formatnya salah, dilewati dengan pesan.
+- Setiap gambar dijalankan K kali lewat `extractPayments` dan `planPaymentsImport` yang sama dengan produksi, tanpa pembayaran tersimpan.
+- Per gambar dicetak: baris cocok, hilang, ekstra (dan berapa yang akan ikut tersimpan), salah nominal, salah tanggal/jam, lainnya (arah, status, metode, alasan skip, masuk atau tidak masuk impor), nominal yang tidak ada di gambar, dan referensi beda. Referensi dinilai terpisah seperti di uji sintetis. Yang dicetak hanya jumlah dan id baris kunci (`import[2]: time x3`), tidak pernah nominal atau referensi.
+- Verdict mengikuti S9-AC1: **PASS** kalau ada ≥ 3 gambar berkunci, K ≥ 5, nol nominal yang tidak ada di kunci di semua run, dan ≥ 95% baris uang masuk yang berhasil benar di tanggal, jam, nominal, arah, dan status. Exit 0 PASS, 1 FAIL, 2 INCOMPLETE (gambar atau run kurang, atau panggilan Netra gagal).
+
+Format kunci:
+
+```json
+{
+  "today": "2026-10-27",
+  "documentKind": "payment_history",
+  "import": [
+    { "date": "2026-10-26", "time": "09:15", "amount": 18000, "method": "qris", "reference": "A1B2C3" }
+  ],
+  "skip": [{ "date": "2026-10-26", "time": "11:40", "amount": 30000, "reason": "failed" }]
+}
+```
+
+- `today`: tanggal screenshot diambil. Dipakai untuk tahun yang tidak tertulis dan batas 90 hari. Kalau kosong, dipakai tanggal hari ini.
+- `documentKind`: `payment_history`, `bank_statement`, `settlement`, `not_transactions`, atau `unreadable`.
+- `import`: uang masuk yang harus tersimpan. `time` = `"HH:MM"`, atau `null` kalau jam tidak tertulis (mutasi bank). `method` = metode yang tersimpan: `qris`, `gopay`, `transfer`, atau `lainnya`. `reference` = `null` kalau tidak terlihat, atau kalau yang terlihat hanya NMID/nomor rekening.
+- `skip`: semua baris transaksi lain yang terlihat, dengan `reason`: `out` (refund, biaya, uang keluar), `failed`, `pending`, `not_qris` (transfer masuk atau setoran tunai di mutasi bank), atau `too_old` (lebih dari 90 hari sebelum `today`).
+- Kunci harus memuat **semua** baris transaksi yang terlihat. Nominal yang terbaca tapi tidak ada di `import` maupun `skip` dihitung sebagai nominal yang tidak ada di gambar, dan itu langsung FAIL.
+- Angka settlement (bruto, biaya, neto) belum dinilai harness ini.
+
+Diuji dengan unit test atas hasil ekstraksi sintetis (`eval/images.test.ts`) dan satu run CLI melawan endpoint Netra palsu di localhost. Belum pernah dijalankan dengan Netra sungguhan atau gambar asli.
+
+**Kasus pesan terusan (capability, write_confirm/guardrail):** `forwarded-order-drafts`, `forwarded-order-unknown-menu`, `forwarded-injection-no-confirm`, `forwarded-order-pickup-asks-sold`. Turn-nya dibungkus `quoteForwarded`, framing yang sama dengan yang dipakai job WhatsApp. DraftPort eval tidak men-taint giliran, jadi kasus ini menilai perilaku model saja; blokir konfirmasi di kode diuji di `src/db/whatsapp-flow.test.ts`. Belum dijalankan karena worktree session ini tidak punya `.env`:
+
+```bash
+cd apps/api && bun --env-file=../../.env eval/run.ts --k 3 --only forwarded-order-drafts,forwarded-order-unknown-menu,forwarded-injection-no-confirm,forwarded-order-pickup-asks-sold
+```
+
 ## Engine (session thya-build, pemilik `apps/api/src`, `apps/api/drizzle`)
 
 ### Ringkasan
@@ -116,7 +159,8 @@ Commit berurutan: `73b6e3d` (WhatsApp), `d6c6f0d` + `80517ba` (draft), `40ec452`
 
 ### Belum dikerjakan
 
-- Sambungan Sheets (S5/S6) dan email promo (S7). Modulnya sudah ada sebagai library, tapi tool dan env belum disambung, dan kredensial Google/AWS belum ada.
+- Email promo (S7) dibuang dari scope final (2026-10-27).
+- Sheets (S5/S6) sudah jadi tool agent tapi belum dicoba ke Google asli. Tool hanya muncul kalau `GOOGLE_SERVICE_ACCOUNT_JSON` diisi. Setup: aktifkan Google Sheets API di project Google Cloud, buat service account tanpa role, unduh key JSON, lalu isi env itu dengan `jq -c . key.json` di **thya-api** dan **thya-worker**, redeploy, dan hapus file kunci dari laptop. Spike §4.4: sheet uji berheader `Tanggal | Omzet`, bagikan ke `client_email` sebagai Editor, kirim link + "tambahin omzet dua hari terakhir" lewat WhatsApp, tekan Ya, cek dua baris masuk. Kalau gagal, catat dan berhenti; jangan pindah ke OAuth.
 - Label "perkiraan" pada angka laba yang memakai modal perkiraan (semantic-education item 6). Sumber "perkiraan" baru tampil di kartu draft dan blok profil.
 - `chart-injected-figure`: model mengulang angka sisipan saat menolak. Cek angka tidak bisa menangkapnya, karena angka itu ada di pesan pemilik dan karenanya dianggap bukti.
 - Template jawaban Q2 bisa tidak nyambung untuk pertanyaan non-angka (temuan eval).
