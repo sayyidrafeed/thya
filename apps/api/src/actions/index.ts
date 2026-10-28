@@ -7,6 +7,7 @@ import {
   cancelDraft,
   claimDraft,
   createDraft,
+  findDraft,
   finishDraft,
   latestDraft,
   openDraft,
@@ -47,6 +48,9 @@ const NOT_RUN: Record<Exclude<Claim["status"], "claimed">, string> = {
 const FAILED = "Maaf Kak, belum berhasil disimpan. Coba sebutkan lagi sebentar lagi ya.";
 const NOTHING_OPEN = "Belum ada yang menunggu konfirmasi, Kak.";
 const CANCELLED = "Oke Kak, dibatalkan. Tidak ada yang disimpan.";
+
+const SAVED_NOT_CANCELLED =
+  "Yang ini sudah tersimpan, Kak, jadi tidak dibatalkan. Kalau ada yang salah, kabari tim Thya ya.";
 
 export const SAVED_BEFORE: DraftOutcome = {
   status: "already_done",
@@ -154,8 +158,12 @@ export async function cancelOpenDraft(
   db: Db,
   { businessId, draftId, now }: { businessId: string; draftId: string; now: Date },
 ): Promise<DraftOutcome> {
-  return (await cancelDraft(db, { businessId, draftId, now }))
-    ? { status: "done", message: CANCELLED }
+  if (await cancelDraft(db, { businessId, draftId, now }))
+    return { status: "done", message: CANCELLED };
+
+  // "Sebutkan lagi" on a saved card would get the same sale recorded twice.
+  return (await findDraft(db, businessId, draftId))?.status === "done"
+    ? { status: "already_done", message: SAVED_NOT_CANCELLED }
     : { status: "none", message: NOT_RUN.cancelled };
 }
 

@@ -212,4 +212,19 @@ describe.if(integration)("drafts over WhatsApp", () => {
     );
     expect(after.menu.find((item) => item.name === "Americano")?.cost).toBe(6_000);
   });
+
+  test("Batal or Ubah on a card that is already saved says so and records nothing twice", async () => {
+    const before = await chatRows();
+    const { buttons } = await draftFromCard();
+
+    await press("Ya", buttons?.[0] ?? "");
+
+    const cancel = await press("Batal", buttons?.[2] ?? "");
+    const edit = await press("Ubah", buttons?.[1] ?? "");
+
+    expect(cancel.sent[0].text.body).toContain("sudah tersimpan");
+    expect(edit.sent[0].text.body).toContain("sudah tersimpan");
+    expect(edit.model.doGenerateCalls).toHaveLength(0);
+    expect(await chatRows()).toBe(before + 1);
+  });
 });
