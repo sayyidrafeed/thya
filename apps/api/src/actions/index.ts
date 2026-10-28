@@ -8,6 +8,7 @@ import {
   claimDraft,
   createDraft,
   finishDraft,
+  latestDraft,
   openDraft,
   type Claim,
 } from "../modules/drafts";
@@ -46,6 +47,17 @@ const NOT_RUN: Record<Exclude<Claim["status"], "claimed">, string> = {
 const FAILED = "Maaf Kak, belum berhasil disimpan. Coba sebutkan lagi sebentar lagi ya.";
 const NOTHING_OPEN = "Belum ada yang menunggu konfirmasi, Kak.";
 const CANCELLED = "Oke Kak, dibatalkan. Tidak ada yang disimpan.";
+
+export const SAVED_BEFORE: DraftOutcome = {
+  status: "already_done",
+  message: "Yang tadi sudah tersimpan, Kak. Belum ada yang baru untuk dikonfirmasi.",
+};
+
+// Decision Q1: the owner sees a card before it runs, and a card made in this turn goes out with this reply.
+export const DRAFT_UNSEEN: DraftOutcome = {
+  status: "none",
+  message: "Ringkasannya baru Thya kirim, Kak. Cek dulu, lalu jawab ya kalau sudah benar.",
+};
 
 // `sheets`: Google access for sheet.append; null where the deployment has no service account.
 type DraftRun = { businessId: string; draftId: string; now: Date; sheets?: SheetsAccess | null };
@@ -115,6 +127,8 @@ export async function runDraft(db: Db, run: DraftRun): Promise<DraftOutcome> {
   const { businessId, draftId, now } = run;
   const claim = await claimDraft(db, { businessId, draftId, now });
 
+  if (claim.status === "done") return { status: "already_done", message: NOT_RUN.done };
+
   if (claim.status !== "claimed") return { status: "none", message: NOT_RUN[claim.status] };
 
   try {
@@ -164,9 +178,13 @@ export function dbDraftPort(
     confirmOpen: async () => {
       const open = await openDraft(db, businessId, now);
 
-      return open === null
-        ? { status: "none", message: NOTHING_OPEN }
-        : runDraft(db, { businessId, draftId: open.id, now, sheets });
+      if (open?.traceId === traceId) return DRAFT_UNSEEN;
+
+      if (open !== null) return runDraft(db, { businessId, draftId: open.id, now, sheets });
+
+      return (await latestDraft(db, businessId, now))?.status === "done"
+        ? SAVED_BEFORE
+        : { status: "none", message: NOTHING_OPEN };
     },
 
     listSchedules: async () =>

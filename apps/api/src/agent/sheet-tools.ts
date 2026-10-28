@@ -31,7 +31,7 @@ export const SHEET_TOOL_NAMES = [
   "importSalesFromSheet",
 ] as const;
 
-type SheetToolName = (typeof SHEET_TOOL_NAMES)[number];
+export type SheetToolName = (typeof SHEET_TOOL_NAMES)[number];
 
 // Decision Q7 style budget: each one reaches Google, and two calls cover one corrected retry.
 const MAX_CALLS_PER_TOOL = 2;

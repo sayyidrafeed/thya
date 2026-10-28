@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { formatDateId } from "../sales/report";
 import type { TurnAction, TurnToolCall } from "./run-turn";
+import { draftDecisionSchema } from "./write-tools";
 
 // Decision Q2b/Q2c: when the model cannot produce a grounded answer, the owner gets a plain answer
 // written by code from the tool results, or a short apology. Never a technical error.
@@ -11,6 +12,10 @@ const APOLOGY =
 // above, or a definition nobody asked for, would not answer it.
 const NEUTRAL_APOLOGY =
   "Maaf Kak, Thya belum bisa jawab yang ini dengan pas. Boleh ditanyakan lagi dengan kalimat lain ya?";
+
+// The draft's card follows this text, so the owner is pointed at it instead of an apology.
+const DRAFT_LINE =
+  "Belum tersimpan ya, Kak. Cek ringkasannya dulu, lalu jawab ya, ubah, atau batal.";
 
 const FIGURE_TOOLS = new Set([
   "queryMetric",
@@ -45,6 +50,8 @@ const dailyOutput = z.object({
 
 const conceptOutput = z.object({ status: z.literal("ok"), text: z.string() });
 
+const draftOutput = z.object({ status: z.literal("draft") });
+
 const channelsOutput = z.object({
   status: z.literal("ok"),
   range,
@@ -77,6 +84,13 @@ const period = ({ label, dataUntil }: z.infer<typeof range>) =>
   dataUntil ? `${label} (data sampai ${dataUntil})` : label;
 
 function linesFor({ toolName, output }: TurnToolCall): string[] {
+  if (draftOutput.safeParse(output).success) return [DRAFT_LINE];
+
+  // A confirm or cancel outcome is already code-written text for the owner.
+  const decision = draftDecisionSchema.safeParse(output);
+
+  if (decision.success) return [decision.data.message];
+
   if (toolName === "queryMetric") {
     const metric = metricOutput.safeParse(output);
 
@@ -141,16 +155,25 @@ function linesFor({ toolName, output }: TurnToolCall): string[] {
 
 // `forcedTool`: the calls come from the Q2c retry, where the model had to call some tool. A
 // definition picked that way says nothing about what the owner asked; fetched figures still do.
-export function fallbackReply(toolCalls: TurnToolCall[], { forcedTool }: { forcedTool: boolean }) {
-  const lines = toolCalls
-    .filter((call) => !(forcedTool && call.toolName === "explainConcept"))
-    .flatMap(linesFor);
+// `claimOnly`: the answer failed only for saying something was saved, not for a figure.
+export function fallbackReply(
+  toolCalls: TurnToolCall[],
+  { forcedTool, claimOnly }: { forcedTool: boolean; claimOnly: boolean },
+) {
+  const lines = [
+    ...new Set(
+      toolCalls
+        .filter((call) => !(forcedTool && call.toolName === "explainConcept"))
+        .flatMap(linesFor),
+    ),
+  ];
 
   if (lines.length > 0)
     return { reply: lines.join("\n"), action: "template" } satisfies FallbackReply;
 
   const aboutFigures =
-    toolCalls.length === 0 || toolCalls.some((call) => FIGURE_TOOLS.has(call.toolName));
+    !claimOnly &&
+    (toolCalls.length === 0 || toolCalls.some((call) => FIGURE_TOOLS.has(call.toolName)));
 
   return {
     reply: aboutFigures ? APOLOGY : NEUTRAL_APOLOGY,

@@ -124,6 +124,26 @@ describe("semantic tools", () => {
     expect(asked.text).toContain("Terkait: modal bahan (HPP), laba kotor.");
   });
 
+  test("the owner's profit word picks the metric, whichever profit the model asked for (D2)", async () => {
+    const { queryMetric } = createSalesTools(dataset, []);
+
+    const untung = await succeeded(
+      queryMetric.execute!({ metric: "net_profit", userTerm: "untung", ...weekly }, options),
+    );
+
+    const bersih = await succeeded(
+      queryMetric.execute!({ metric: "profit", userTerm: "untung bersih", ...weekly }, options),
+    );
+
+    expect(untung).toMatchObject({ metric: "gross_profit", value: expect.stringMatching(/^Rp/) });
+    expect(untung.interpretedAs).toStartWith('"untung" Thya hitung sebagai laba kotor');
+    expect(bersih).toMatchObject({ metric: "net_profit", value: null });
+    // Listed under net_profit too, "untung" read as laba bersih (eval untung-this-month).
+    expect(queryMetricInputSchema.shape.metric.description).toContain(
+      "net_profit = laba bersih (laba bersih, untung bersih)",
+    );
+  });
+
   test("net profit returns no number while operating expenses are missing", async () => {
     const { queryMetric } = createSalesTools(dataset, []);
 

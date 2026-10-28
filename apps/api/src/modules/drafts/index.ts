@@ -64,6 +64,18 @@ export async function openDraft(db: Db, businessId: string, now: Date): Promise<
   return row ?? null;
 }
 
+// The card a typed "ya" may still be answering, whatever became of it; older ones are out of reach.
+export async function latestDraft(db: Db, businessId: string, now: Date): Promise<Draft | null> {
+  const [row] = await db
+    .select()
+    .from(drafts)
+    .where(and(eq(drafts.businessId, businessId), gt(drafts.expiresAt, now)))
+    .orderBy(desc(drafts.createdAt))
+    .limit(1);
+
+  return row ?? null;
+}
+
 export async function findDraft(db: Db, businessId: string, draftId: string) {
   const [row] = await db
     .select()

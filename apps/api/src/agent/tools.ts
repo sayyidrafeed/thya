@@ -37,7 +37,7 @@ import {
   resolveMetric,
   type MetricId,
 } from "../semantic/metrics";
-import { termsFor } from "../semantic/terms";
+import { GENERIC_PROFIT_TERMS, termsFor } from "../semantic/terms";
 
 const MAX_DAILY_RANGE_DAYS = 31;
 
@@ -64,7 +64,11 @@ export const periodFields = {
     ),
 };
 
-const metricHint = (id: MetricId) => `${id} = ${CONCEPTS[id].label} (${termsFor(id).join(", ")})`;
+// Generic profit words sit under `profit` only: under net_profit "untung" read as laba bersih.
+const metricHint = (id: MetricId) =>
+  `${id} = ${CONCEPTS[id].label} (${termsFor(id)
+    .filter((term) => !GENERIC_PROFIT_TERMS.includes(term))
+    .join(", ")})`;
 
 export const queryMetricInputSchema = z.object({
   metric: z
@@ -72,7 +76,7 @@ export const queryMetricInputSchema = z.object({
     .describe(
       [
         ...ANSWER_METRICS.map(metricHint),
-        'profit = "untung"/"laba"/"bathi" tanpa kata kotor atau bersih',
+        `profit = ${GENERIC_PROFIT_TERMS.map((term) => `"${term}"`).join("/")} tanpa kata kotor atau bersih`,
       ].join("; "),
     ),
   userTerm: z
@@ -196,9 +200,10 @@ export function createSalesTools(
         run("queryMetric", () => {
           const range = resolvePeriod(periodInput, today, dataStart);
           const previous = comparableRange(range);
+          const metric = resolveMetric(requested, userTerm);
 
           const result = computeMetric({
-            requested,
+            requested: metric,
             menu,
             records,
             payments,
@@ -206,7 +211,6 @@ export function createSalesTools(
             previousRange: previous,
           });
 
-          const metric = resolveMetric(requested);
           const explanation = pickExplanation(result, exposureLevel(events, metric));
           events.push(...queryMetricEvents(metric, explanation.level, userTerm));
 

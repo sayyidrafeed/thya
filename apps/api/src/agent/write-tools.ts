@@ -2,6 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import {
   COST_SOURCES,
+  DRAFT_OUTCOMES,
   type DraftOutcome,
   type DraftPort,
   type DraftRequest,
@@ -40,15 +41,24 @@ const MAX_BACKDATE_DAYS = 31;
 const DRAFT_NOTE =
   "Belum tersimpan. Minta Kakak cek ringkasannya lalu tekan Ya, Ubah, atau Batal. Jangan bilang sudah tersimpan.";
 
+// Eval forwarded-order-unknown-menu: after this error the model wrote "sudah aku catat sebagian".
+const NOT_RECORDED_NOTE =
+  "Belum ada yang dicatat. Jangan bilang sudah dicatat, sebagian sekalipun.";
+
 const NOT_READY = "Pencatatan belum bisa dipakai di sini, Kak.";
 
 export type DraftResult =
   | { status: "draft"; draftId: string; summary: string; note: string }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; note?: string };
 
-type DecisionResult =
-  | { status: "ok"; outcome: DraftOutcome["status"]; message: string }
-  | { status: "error"; message: string };
+// What confirmDraft and cancelDraft hand the model; run-turn and fallback read it back.
+export const draftDecisionSchema = z.object({
+  status: z.literal("ok"),
+  outcome: z.enum(DRAFT_OUTCOMES),
+  message: z.string(),
+});
+
+type DecisionResult = z.infer<typeof draftDecisionSchema> | { status: "error"; message: string };
 
 async function decide(
   port: DraftPort | null,
@@ -336,7 +346,8 @@ export function createWriteTools(dataset: SalesDataset, port: DraftPort | null) 
     try {
       request = build();
     } catch (error) {
-      if (error instanceof WriteInputError) return { status: "error", message: error.message };
+      if (error instanceof WriteInputError)
+        return { status: "error", message: error.message, note: NOT_RECORDED_NOTE };
 
       throw error;
     }

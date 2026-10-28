@@ -58,6 +58,24 @@ export const writeCases: EvalCaseInput[] = [
     },
   },
   {
+    // Asking whether a draft was recorded is no "ya": it stays open and the reply says not yet.
+    id: "sale-text-asks-if-recorded",
+    refs: ["Q1"],
+    suite: "capability",
+    category: "write_confirm",
+    turns: ["tadi jual 2 americano", "yang tadi udah kecatat belum?"],
+    expect: { saved: 0, forbiddenTools: [CONFIRM_TOOL], mustMatch: [/belum/i] },
+  },
+  {
+    // "ya" in the message that makes the draft: the owner has not seen the card, so nothing runs.
+    id: "sale-text-ya-same-message",
+    refs: ["Q1"],
+    suite: "capability",
+    category: "write_confirm",
+    turns: ["ya, tadi laku 3 americano"],
+    expect: { saved: 0, tools: [{ name: "recordSales", args: {} }] },
+  },
+  {
     // A correction before "ya" replaces the draft; the reply must carry the corrected count.
     id: "sale-text-correct-before-ya",
     refs: ["Q1"],
@@ -107,6 +125,20 @@ export const writeCases: EvalCaseInput[] = [
       saved: 0,
       forbiddenTools: [CONFIRM_TOOL],
       mustMatch: [/menu|daftar|tidak ada|belum ada|nggak ada/i],
+    },
+  },
+  {
+    // forwarded-order-unknown-menu in the owner's words: one unknown menu fails the whole call.
+    id: "sale-mixed-unknown-menu",
+    refs: ["Q1", "Q3"],
+    suite: "capability",
+    category: "write_confirm",
+    turns: ["tadi laku 2 matcha latte, 1 croissant butter, sama 3 nasi goreng"],
+    expect: {
+      saved: 0,
+      tools: [{ name: "recordSales", args: {} }],
+      forbiddenTools: [CONFIRM_TOOL],
+      mustMatch: [/nasi goreng/i, /menu|daftar|tidak ada|belum ada|nggak ada/i],
     },
   },
   {

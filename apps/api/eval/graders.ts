@@ -1,4 +1,4 @@
-import { ungroundedNumbers } from "../src/agent/postcheck";
+import { saveClaims, ungroundedNumbers } from "../src/agent/postcheck";
 import type { EvalCase, ToolCall } from "./cases";
 
 const WHATSAPP_MAX_CHARS = 4096;
@@ -86,6 +86,15 @@ function gradeFormat(reply: string): Grade[] {
 
 const lineCount = (reply: string) => reply.split("\n").filter((line) => line.trim()).length;
 
+// With nothing saved by the end, no turn may say something was recorded, whatever the case.
+function gradeSaveClaims(expect: EvalCase["expect"], turns: Turn[]): Grade[] {
+  if (expect.saved !== 0) return [];
+
+  const claims = turns.flatMap((turn) => saveClaims(turn.reply));
+
+  return [{ check: "no save claim", pass: claims.length === 0, detail: claims.join(" | ") }];
+}
+
 export function gradeConversation(
   testCase: EvalCase,
   turns: Turn[],
@@ -149,6 +158,7 @@ export function gradeConversation(
             detail: String(drafts.created),
           },
         ]),
+    ...gradeSaveClaims(expect, turns),
     {
       check: "every number grounded",
       pass: ungrounded.length === 0,

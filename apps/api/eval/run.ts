@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { asSchema, type ModelMessage, type Tool } from "ai";
+import { DRAFT_UNSEEN, SAVED_BEFORE } from "../src/actions";
 import type { DraftPort, DraftRequest } from "../src/actions/kinds";
 import { promptFacts, runTurn, type TurnResult } from "../src/agent";
 import { buildInstructions } from "../src/agent/prompt";
@@ -43,6 +44,8 @@ const CONCURRENCY = 2;
 // what G4 grades: a draft runs once, only after "ya" (decision Q1).
 function memoryDrafts() {
   let open: DraftRequest | null = null;
+  let openedThisTurn = false;
+  let latestSaved = false;
   const saved: DraftRequest[] = [];
   const created: DraftRequest[] = [];
 
@@ -54,15 +57,21 @@ function memoryDrafts() {
   const port: DraftPort = {
     create: async (request) => {
       open = request;
+      openedThisTurn = true;
+      latestSaved = false;
       created.push(request);
 
       return { draftId: crypto.randomUUID() };
     },
+    // As dbDraftPort: a "ya" after the latest draft was saved hears so, and nothing runs twice.
     confirmOpen: async () => {
-      if (open === null) return nothingOpen;
+      if (open !== null && openedThisTurn) return DRAFT_UNSEEN;
+
+      if (open === null) return latestSaved ? SAVED_BEFORE : nothingOpen;
 
       saved.push(open);
       open = null;
+      latestSaved = true;
 
       return { status: "done", message: "Sudah dicatat, Kak." };
     },
@@ -75,7 +84,11 @@ function memoryDrafts() {
     },
   };
 
-  return { port, saved, created };
+  const nextTurn = () => {
+    openedThisTurn = false;
+  };
+
+  return { port, saved, created, nextTurn };
 }
 
 export type Trial = {
@@ -163,6 +176,7 @@ async function runTrial(testCase: EvalCase, trial: number): Promise<Trial> {
   try {
     for (const user of testCase.turns) {
       messages.push({ role: "user", content: user });
+      drafts.nextTurn();
 
       const turn = await runTurn({
         model: chatModel,

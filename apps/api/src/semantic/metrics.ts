@@ -8,6 +8,7 @@ import {
   type SaleRecord,
 } from "../sales/report";
 import type { ConceptId } from "./concepts";
+import { findTerm, namesBothProfits } from "./terms";
 
 // "profit" is the owner's generic "untung". Decision D2 resolves it to net profit once operating
 // expenses are recorded; nothing records them yet, so it is always gross profit for now.
@@ -57,8 +58,28 @@ export type MetricQuery = {
   previousRange: DateRange | null;
 };
 
-export function resolveMetric(requested: RequestedMetric): MetricId {
-  return requested === "profit" ? "gross_profit" : requested;
+const PROFITS: RequestedMetric[] = ["profit", "gross_profit", "net_profit"];
+
+function namedProfit(userTerm: string | null): RequestedMetric | null {
+  const term = findTerm(userTerm);
+
+  if (term === null) return null;
+
+  if (namesBothProfits(term)) return "profit";
+
+  if (term.concepts.includes("net_profit")) return "net_profit";
+
+  return term.concepts.includes("gross_profit") ? "gross_profit" : null;
+}
+
+// D2 follows the owner's word, not the model's pick (eval untung-this-month chose net profit).
+export function resolveMetric(
+  requested: RequestedMetric,
+  userTerm: string | null = null,
+): MetricId {
+  const metric = (PROFITS.includes(requested) ? namedProfit(userTerm) : null) ?? requested;
+
+  return metric === "profit" ? "gross_profit" : metric;
 }
 
 export const ANSWER_METRICS = METRIC_IDS.filter((id): id is MetricId => id !== "profit");

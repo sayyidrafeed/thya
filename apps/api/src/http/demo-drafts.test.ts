@@ -17,19 +17,25 @@ const draftTurn: UIMessage = {
   ],
 };
 
-const confirmedTurn: UIMessage = {
-  id: "a2",
+const decisionTurn = (
+  type: "tool-confirmDraft" | "tool-cancelDraft",
+  outcome: string,
+  id: string,
+): UIMessage => ({
+  id,
   role: "assistant",
   parts: [
     {
-      type: "tool-confirmDraft",
-      toolCallId: "c2",
+      type,
+      toolCallId: id,
       state: "output-available",
       input: {},
-      output: { status: "ok", outcome: "done", message: "Sudah dicatat" },
+      output: { status: "ok", outcome, message: "Pesan dari kode" },
     },
   ],
-};
+});
+
+const confirmedTurn = decisionTurn("tool-confirmDraft", "done", "a2");
 
 const owner = (text: string): UIMessage => ({
   id: text,
@@ -43,10 +49,29 @@ describe("demo drafts", () => {
 
     expect(await open.confirmOpen()).toMatchObject({ status: "done" });
     expect((await open.confirmOpen()).message).toContain("data contoh Kopi Senja tidak berubah");
-
-    const decided = demoDraftPort([draftTurn, confirmedTurn, owner("ya")]);
-
-    expect(await decided.confirmOpen()).toMatchObject({ status: "none" });
+    expect(await demoDraftPort([owner("ya")]).confirmOpen()).toMatchObject({ status: "none" });
     expect(await demoDraftPort([owner("ya")]).cancelOpen()).toMatchObject({ status: "none" });
+  });
+
+  test("another ya after the latest draft was saved hears so, as on WhatsApp; a cancel saved nothing", async () => {
+    const again = demoDraftPort([draftTurn, confirmedTurn, owner("ya")]);
+
+    const third = demoDraftPort([
+      draftTurn,
+      confirmedTurn,
+      decisionTurn("tool-confirmDraft", "already_done", "a3"),
+      owner("ya"),
+    ]);
+
+    const cancelled = demoDraftPort([
+      draftTurn,
+      decisionTurn("tool-cancelDraft", "done", "a2"),
+      owner("ya"),
+    ]);
+
+    expect(await again.confirmOpen()).toMatchObject({ status: "already_done" });
+    expect(await third.confirmOpen()).toMatchObject({ status: "already_done" });
+    expect(await again.cancelOpen()).toMatchObject({ status: "none" });
+    expect(await cancelled.confirmOpen()).toMatchObject({ status: "none" });
   });
 });

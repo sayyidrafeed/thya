@@ -150,6 +150,8 @@ Tabel istilah awal. Kolom "default" sama dengan `docs/agent-harness.md` §3; yan
 | rame, sepi | peak_hours, revenue vs average | sesuai kata waktu | tidak pernah |
 | uang di laci, duit pegangan, kas, arus kas | cash | belum tersedia | selalu jelaskan bahwa Thya belum mencatat kas masuk/keluar |
 
+Untuk metrik laba, kolom default dijalankan kode, bukan pilihan model: `resolveMetric` di `semantic/metrics.ts` memakai kata pemilik (`userTerm`). "Untung bersih" selalu laba bersih, dan "untung" tanpa kata kotor atau bersih mengikuti D2 walaupun model meminta `net_profit`. Kata yang menyebut laba kotor dan laba bersih sekaligus ("untung", "laba", "bathi") hanya dicantumkan di `profit` pada deskripsi tool `queryMetric`, karena model pernah membaca "untung" sebagai laba bersih (eval `untung-this-month`, run 27 Okt 2026).
+
 ### 3.2 Kapan menjelaskan vs langsung menjawab
 
 Prinsip: angka yang diminta selalu muncul di baris pertama. Penjelasan adalah tambahan, maksimal satu kalimat kecuali diminta.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildDemoSales } from "../sales/demo-shop";
-import { ungroundedNumbers } from "./postcheck";
+import { saveClaims, ungroundedNumbers } from "./postcheck";
 import { createSalesTools } from "./tools";
 
 const options = { toolCallId: "test", messages: [], context: {} };
@@ -138,5 +138,96 @@ describe("ungroundedNumbers", () => {
     expect(ungroundedNumbers("Omzetnya bukan segitu, tapi Rp21.751.000.", tools, owner)).toEqual(
       [],
     );
+  });
+});
+
+describe("saveClaims", () => {
+  test("finds every way of saying a save happened, including the stored false claims", () => {
+    const claims = [
+      "Pesanannya sudah aku catat sebagian, Kak, tapi ada satu yang belum cocok.",
+      "udah Thya simpan ya Kak",
+      "Oke, kucatat.",
+      "Penjualannya sudah masuk catatan, Kak.",
+      "Siap, Kak, 3 cappuccino-nya sudah kecatat ya.",
+      "Sip, catatannya sudah masuk ya Kak.",
+      "Kak, aku catat ya.",
+      "Oke Kak, dicatat ya.",
+      "Nasi goreng belum ada di menu, tapi sisanya sudah aku catat.",
+      "Dua Americano itu sudah *tercatat* 👍",
+      "Penjualannya sudah dimasukkan ke catatan, Kak.",
+      "Sudah aku masukin ya Kak.",
+      "3 kopi sudah ditambahkan.",
+      "Udah Thya input, Kak.",
+      "Tercatat ya Kak!",
+      "Beres, 3 kopi sudah masuk.",
+    ];
+
+    for (const reply of claims) expect(saveClaims(reply)).toHaveLength(1);
+  });
+
+  test("a question at the end of the sentence does not hide a claim in an earlier clause", () => {
+    const claims = [
+      "Pesanannya sudah aku catat sebagian, tapi nasi goreng belum ada di menu, maksudnya Mie Goreng Telur?",
+      "Sudah aku catat ya Kak, mau sekalian catat penjualan lain?",
+    ];
+
+    for (const reply of claims) expect(saveClaims(reply)).toEqual([reply]);
+  });
+
+  test("dan, jadi, lalu, terus, sehingga and a closing ya Kak end the clause that holds a claim", () => {
+    const claims = [
+      "Sudah aku catat ya Kak mau tambah lagi?",
+      "Nasi goreng belum ada di menu dan sisanya sudah aku catat.",
+      "Sudah aku catat dan mau sekalian catat penjualan lain?",
+      "Pesanannya sudah tercatat jadi mau tambah yang lain?",
+      "Nasi goreng tidak ada di daftar jadi yang lain sudah aku catat.",
+      "Sudah di-catat ya Kak.",
+      "Nasi goreng belum ada lalu sisanya sudah aku catat.",
+      "Nasi goreng belum ada terus yang lain sudah aku catat.",
+      "Nasi goreng tidak ada di daftar sehingga sisanya saja sudah aku catat.",
+    ];
+
+    for (const reply of claims) expect(saveClaims(reply)).toEqual([reply]);
+  });
+
+  test("a description of stored data that reads like a stored false claim still counts as one", () => {
+    const claims = [
+      // Verbatim from run 2026-10-25T23-45-59.597Z sale-text-double-ya #0, a turn that saved nothing.
+      "Sudah tercatat semua, Kak.",
+      "Omzet hari ini Rp2.030.000, semua penjualan sudah tercatat.",
+    ];
+
+    for (const reply of claims) expect(saveClaims(reply)).toEqual([reply]);
+  });
+
+  test("leaves negations, conditions, abilities, questions, quotes and stored data alone", () => {
+    const reply = [
+      "Maaf Kak, belum berhasil disimpan.",
+      "Oke Kak, dibatalkan. Tidak ada yang disimpan.",
+      "Stok gula aren belum tercatat di Thya, Kak.",
+      "Pesanan 2 Matcha Latte sudah bisa dicatat, tapi nasi goreng tidak ada di menu.",
+      "Kalau sudah dicatat, nanti muncul di rekap.",
+      "Kalau Kakak setuju dan sudah aku catat, rekapnya ikut berubah.",
+      "Setelah Kakak tekan Ya dan datanya sudah tersimpan, rekap hari ini ikut berubah.",
+      "Siap, nanti dicatat setelah Kakak tekan Ya.",
+      "Nanti kucatat ya.",
+      "Sudah dicatat?",
+      "Mau Thya catat sekarang, atau sudah dimasukkan sendiri?",
+      'Ketik saja "udah dicatat" kalau mau.',
+      "Draft-nya sudah Thya siapkan, Kak.",
+      "Omzet dari penjualan yang sudah tercatat hari ini Rp2.494.000.",
+      "Data penjualan baru tercatat mulai *28 Juni 2026*.",
+      "Yang sudah tercatat 20 Okt s.d. 22 Okt.",
+      "Kak, datanya belum tercatat.",
+      "Datanya sudah tercatat sampai 22 Okt.",
+      "Datanya sudah tercatat dari 28 Juni.",
+      "Penjualan hari ini sudah tercatat Rp2.494.000.",
+      "Sekarang sudah masuk jam buka, Kak.",
+      // Verbatim from run 2026-10-26T17-48-17.753Z channels-ojol-yesterday #2.
+      "Kalau Kakak mau, aku bisa cek omzet dan untung kemarin dari catatan yang sudah masuk.",
+      "Menu baru belum bisa ditambahkan.",
+    ].join("\n");
+
+    expect(saveClaims(reply)).toEqual([]);
   });
 });

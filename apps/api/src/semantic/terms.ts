@@ -71,3 +71,12 @@ export function findTerm(phrase: string | null): Term | null {
 export function termsFor(concept: ConceptId): string[] {
   return TERMS.flatMap((term) => (term.concepts.includes(concept) ? [term.phrase] : []));
 }
+
+// "untung", "laba", "bathi" name gross and net profit alike, so D2 picks, not the model.
+export function namesBothProfits({ concepts }: Term): boolean {
+  return concepts.includes("gross_profit") && concepts.includes("net_profit");
+}
+
+export const GENERIC_PROFIT_TERMS = TERMS.flatMap((term) =>
+  namesBothProfits(term) ? [term.phrase] : [],
+);

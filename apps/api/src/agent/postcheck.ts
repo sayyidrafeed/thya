@@ -157,3 +157,98 @@ export function ungroundedNumbers(
 
   return ungrounded;
 }
+
+const SAVE_VERB = String.raw`(?:(?:(?:ku|di|ter|ke)-?)?(?:catat|catet|simpan|simpen)(?:kan|in)?|(?:(?:ku|di)-?)?(?:masuk|tambah)(?:kan|in)|(?:(?:ku|di)-?)?input(?:kan|in)?)`;
+
+const PASSIVE_VERB = String.raw`(?:(?:di|ter|ke)-?(?:catat|catet|simpan|simpen)(?:kan|in)?|di-?(?:masuk|tambah)(?:kan|in)|di-?input(?:kan)?)`;
+
+// Only particles left in the clause: "sudah masuk ya Kak" claims, "sudah masuk jam buka" does not.
+const CLAUSE_END = String.raw`(?=(?:\s+(?:ya|kak|kakak|semua|semuanya|juga|kok|nih|deh|tadi)(?!\p{L}))*[^\p{L}]*?(?:[,;:—–]|$))`;
+
+// In order: "sudah aku catat", "catatannya sudah masuk", "kucatat", "Sip, dicatat", "Tercatat ya".
+const SAVE_CLAIMS = [
+  String.raw`(?<!yang )(?<!\p{L})(?:sudah|udah|dah|telah|berhasil|sukses) (?:[\p{L}-]+ ){0,3}?(?:${SAVE_VERB}|masuk (?:ke )?(?:catatan|pembukuan|data|sistem|sheet)|masuk${CLAUSE_END})(?!\p{L})`,
+  String.raw`(?<!\p{L})catatan\p{L}* [^,;:]{0,40}?(?<!yang )(?<!\p{L})(?:sudah|udah|telah) masuk(?!\p{L})`,
+  String.raw`(?<!\p{L})(?:ku(?:catat|catet|simpan|simpen)(?:kan|in)?|(?:aku|thya|saya) (?:catat|catet|simpan)(?:kan|in)? ya)(?!\p{L})`,
+  String.raw`^(?:oke|ok|okay|sip|siap|baik|beres)(?!\p{L})[^.!?]{0,15}?(?<!\p{L})(?:${PASSIVE_VERB}|ku(?:catat|catet|simpan|simpen)(?:kan|in)?)(?!\p{L})`,
+  String.raw`(?<=(?:^|[,;:—–])\s*)${PASSIVE_VERB}${CLAUSE_END}`,
+].map((source) => new RegExp(source, "giu"));
+
+// Negation, ability or intent in the verb's own clause: "belum dicatat", "sudah bisa dicatat".
+const HEDGE =
+  /(?<!\p{L})(?:belum|tidak|tak|nggak|ngga|enggak|gak|ga|ndak|bukan|jangan|gagal|bisa|dapat|akan|bakal|mau|ingin|perlu|harus|boleh|nanti)(?!\p{L})/iu;
+
+// A condition reaches past "dan" or "jadi" to the comma: "kalau Kakak setuju dan sudah dicatat,".
+const CONDITION =
+  /(?<!\p{L})(?:kalau|kalo|jika|bila|apabila|begitu|setelah|sesudah|biar|supaya|agar)(?!\p{L})/iu;
+
+// "sudah tercatat sampai 22 Okt", "dari 28 Juni", "Rp2.494.000" describes stored data, not a save.
+const STORED_EXTENT =
+  /^(?:\s+\p{L}+){0,2}?\s*(?:rp\s?\d|dari\s+\d|(?:sampai|hingga|s\.?\s?d\.?|mulai|sejak|per)(?!\p{L}))/iu;
+
+const STATIVE_VERB = /(?<!\p{L})ter-?(?:catat|catet|simpan|simpen)$/iu;
+
+const CLAUSE_BREAKS = [",", ";", ":", "—", "–", " tapi ", " tetapi ", " namun ", " sedangkan "];
+
+// A closing "ya Kak" with more words after it ends a clause too: "sudah aku catat ya Kak mau ...".
+const JOINS = [" dan ", " jadi ", " lalu ", " terus ", " sehingga ", " ya kak ", " ya kakak "];
+
+function clauseStart(before: string, marks: string[]): number {
+  return Math.max(
+    0,
+    ...marks.map((mark) => {
+      const at = before.lastIndexOf(mark);
+
+      return at === -1 ? 0 : at + mark.length;
+    }),
+  );
+}
+
+// The match's clause: "nasi goreng belum ada, tapi sisanya sudah aku catat" still claims the rest.
+function clauseAround(sentence: string, match: RegExpExecArray) {
+  const end = match.index + match[0].length;
+  const before = sentence.slice(0, match.index).toLowerCase();
+  const after = sentence.slice(end).toLowerCase();
+  const breaks = [...CLAUSE_BREAKS, ...JOINS];
+
+  const stop = Math.min(
+    ...breaks.map((mark) => {
+      const at = after.indexOf(mark);
+
+      return at === -1 ? after.length : at;
+    }),
+  );
+
+  return {
+    lead: sentence.slice(clauseStart(before, breaks), end),
+    scope: sentence.slice(clauseStart(before, CLAUSE_BREAKS), end),
+    tail: sentence.slice(end, end + stop),
+  };
+}
+
+function claims(sentence: string, match: RegExpExecArray): boolean {
+  const { lead, scope, tail } = clauseAround(sentence, match);
+
+  if (HEDGE.test(lead) || CONDITION.test(scope) || /\?[^\p{L}\d]*$/u.test(tail)) return false;
+
+  return !(STATIVE_VERB.test(match[0]) && STORED_EXTENT.test(tail));
+}
+
+// A quoted phrase is an example to type, and a clause that ends in "?" asks rather than claims.
+export function saveClaims(reply: string): string[] {
+  return reply
+    .replace(QUOTED, (quote) => " ".repeat(quote.length))
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((sentence) =>
+      sentence
+        .replace(/[*_~]/g, "")
+        .replace(/\s+/g, " ")
+        .replace(/^[^\p{L}]+/u, "")
+        .trim(),
+    )
+    .filter((sentence) =>
+      SAVE_CLAIMS.some((pattern) =>
+        [...sentence.matchAll(pattern)].some((match) => claims(sentence, match)),
+      ),
+    );
+}

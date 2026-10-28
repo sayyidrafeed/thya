@@ -148,10 +148,12 @@ export function createChartTool(
   let charts = 0;
 
   return {
+    // Eval chart-unknown-data: asked for a stock chart, the model sent a revenue chart instead.
     showChart: tool({
       description:
         "Gambar grafik penjualan (omzet/porsi per hari, atau peringkat menu) yang dikirim sebagai gambar. " +
-        "Panggil kalau Kakak minta grafik, diagram, atau gambar. Data selain penjualan (stok, pengeluaran) belum ada.",
+        "Panggil kalau Kakak minta grafik, diagram, atau gambar penjualan. Data selain penjualan (stok, pengeluaran) belum ada: " +
+        "untuk itu jangan panggil tool ini dan jangan kirim grafik penjualan sebagai gantinya.",
       inputSchema: showChartInputSchema,
       execute: async (input) => {
         if (charts >= MAX_CHARTS_PER_TURN)

@@ -111,11 +111,11 @@ export const storedDraftSchema = z.discriminatedUnion("kind", [
 
 export type StoredDraft = z.infer<typeof storedDraftSchema>;
 
+// `already_done`: the latest draft was saved earlier, so nothing ran; `none`: nothing to decide.
+export const DRAFT_OUTCOMES = ["done", "already_done", "failed", "none"] as const;
+
 // The outcome the owner reads. `message` is written by code, never by the model.
-export type DraftOutcome =
-  | { status: "done"; message: string }
-  | { status: "failed"; message: string }
-  | { status: "none"; message: string };
+export type DraftOutcome = { status: (typeof DRAFT_OUTCOMES)[number]; message: string };
 
 // How tools reach drafts without knowing the database (agent/ imports no db, engine-plan §5.1).
 export type DraftPort = {
