@@ -2,9 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { MockLanguageModelV4 } from "ai/test";
 import { z } from "zod";
 import { buildDemoSales, demoBusiness } from "../sales/demo-shop";
+import { createChartTool } from "./chart-tool";
 import { runTurn, type TurnInput } from "./run-turn";
+import { fakeGoogle, fakeSheetsAccess, memorySheetPort } from "./sheet-testing";
+import { SHEET_TOOL_NAMES } from "./sheet-tools";
 import { scriptedModel } from "./testing";
-import { createSalesTools } from "./tools";
+import { createSalesTools, SALES_TOOL_NAMES } from "./tools";
+import { WRITE_TOOL_NAMES } from "./write-tools";
 
 type MockResult = Exclude<
   ConstructorParameters<typeof MockLanguageModelV4>[0],
@@ -260,6 +264,26 @@ describe("runTurn", () => {
 
     expect(result.check).toMatchObject({ action: "regenerated", attempts: 2 });
     expect(result.reply).not.toContain("77.777.777");
+  });
+
+  test("every tool a turn offers is listed by the module that defines it, drafting ones apart", async () => {
+    const google = fakeGoogle(new Map());
+    const { port } = memorySheetPort(await fakeSheetsAccess(google.fetcher));
+    const model = scriptedModel([{ text: "Halo Kak." }]);
+
+    await runTurn({ ...turn(model, "halo"), sheets: port });
+
+    const offered = model.doGenerateCalls[0]?.tools?.map((tool) => tool.name) ?? [];
+
+    // A new tool fails here until its owner lists it, as a draft tool or beside them.
+    expect(offered.toSorted()).toEqual(
+      [
+        ...SALES_TOOL_NAMES,
+        ...WRITE_TOOL_NAMES,
+        ...SHEET_TOOL_NAMES,
+        ...Object.keys(createChartTool(dataset, null, [])),
+      ].toSorted(),
+    );
   });
 
   test("answers a non-figure question with a neutral apology, not a forced definition", async () => {

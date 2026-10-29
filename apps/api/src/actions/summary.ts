@@ -29,6 +29,12 @@ export function salesSummary({ date, items }: SalesRecordArgs): string {
   ].join("\n");
 }
 
+export function salesRecorded({ date, items }: SalesRecordArgs): string {
+  const sold = items.map((item) => `${item.quantity} ${item.name}`).join(", ");
+
+  return `Sudah dicatat, Kak: ${sold} untuk ${dayLabel(date)}.`;
+}
+
 const COST_SOURCE_LABEL: Record<MenuCostArgs["source"], string> = {
   owner: "dari Kakak",
   recipe: "dihitung dari harga belanja",

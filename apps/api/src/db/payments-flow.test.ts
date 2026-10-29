@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { REPLACED_LINE } from "../agent";
 import { scriptedModel, type ScriptStep } from "../agent/testing";
 import { createWhatsAppClient } from "../channels/whatsapp/client";
 import type { WebhookMessage } from "../channels/whatsapp/inbound";
@@ -169,5 +170,42 @@ describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
 
     expect(sent.map((body) => body.type)).toContain("interactive");
     expect(await db.$count(payments)).toBe(3);
+  });
+
+  test("a screenshot over a sale card the owner had open says in code's words that card is gone", async () => {
+    const typed: WebhookMessage = {
+      from: OWNER,
+      id: `wamid.p${++wamid}`,
+      timestamp: "1",
+      type: "text",
+      text: { body: "tadi laku 2 americano" },
+    };
+
+    await send(
+      [typed],
+      [
+        {
+          tool: "recordSales",
+          input: { day: "today", date: null, items: [{ menuName: "americano", quantity: 2 }] },
+        },
+        { text: "Cek dulu ya Kak, lalu jawab ya, ubah, atau batal." },
+      ],
+    );
+
+    const other = {
+      ...history,
+      transactions: history.transactions.map((row) => ({ ...row, day: 22, reference: null })),
+    };
+
+    const sent = await send(
+      [image()],
+      [{ tool: "recordExtraction", input: other }, { text: "ok" }],
+      new Uint8Array([137, 80, 78, 71, 7, 7, 7]),
+    );
+
+    expect(sent.map((body) => body.type)).toEqual(["text", "interactive"]);
+    expect(sent[0].text.body).toBe(
+      `Thya sudah baca screenshotnya. Cek dulu ya Kak, lalu tekan Ya, Ubah, atau Batal.\n${REPLACED_LINE}`,
+    );
   });
 });

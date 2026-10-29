@@ -22,15 +22,21 @@ import {
 // Write tools only prepare drafts (decision Q1). Nothing is saved until the owner taps "Ya" (code)
 // or types "ya" (confirmDraft). Draft text comes from code, so every number in it is grounded.
 
-export const WRITE_TOOL_NAMES = [
+// Tools that make a draft or try to; in their turn an earlier save backs no claim (run-turn).
+export const DRAFT_TOOL_NAMES = [
   "recordSales",
   "setMenuCost",
   "setChannelCommission",
+  "createSchedule",
+  "cancelSchedule",
+] as const;
+
+export const WRITE_TOOL_NAMES = [
+  ...DRAFT_TOOL_NAMES,
   "confirmDraft",
   "cancelDraft",
-  "createSchedule",
+  "checkDraft",
   "listSchedules",
-  "cancelSchedule",
 ] as const;
 
 export type WriteToolName = (typeof WRITE_TOOL_NAMES)[number];
@@ -47,11 +53,48 @@ const NOT_RECORDED_NOTE =
 
 const NOT_READY = "Pencatatan belum bisa dipakai di sini, Kak.";
 
-export type DraftResult =
-  | { status: "draft"; draftId: string; summary: string; note: string }
-  | { status: "error"; message: string; note?: string };
+const REPLACED_NOTE =
+  "Yang sebelumnya (replaced) belum tersimpan dan sekarang diganti yang ini. Wajib bilang ke Kakak bahwa yang sebelumnya tidak jadi dicatat dan sebut isinya singkat. Kalau Kakak ternyata mau keduanya, minta sebutkan lagi yang sebelumnya setelah yang ini dijawab.";
 
-// What confirmDraft and cancelDraft hand the model; run-turn and fallback read it back.
+// What every tool that drafted answers; fallback and the eval graders parse it back with this.
+export const draftedSchema = z.object({
+  status: z.literal("draft"),
+  draftId: z.string(),
+  summary: z.string(),
+  note: z.string(),
+  replaced: z.object({ summary: z.string(), note: z.string() }).nullable(),
+});
+
+type Drafted = z.infer<typeof draftedSchema>;
+
+// A draft that took over an open one says so, so the owner never loses the old one silently.
+export function draftedOutput(
+  { draftId, replaced }: Awaited<ReturnType<DraftPort["create"]>>,
+  summary: string,
+  note: string,
+): Drafted {
+  return {
+    status: "draft",
+    draftId,
+    summary,
+    note,
+    replaced: replaced === null ? null : { summary: replaced, note: REPLACED_NOTE },
+  };
+}
+
+// Owner words that could not become a draft; the message says why, so fallback relays it as is.
+export const notDraftedSchema = z.object({
+  status: z.literal("error"),
+  message: z.string(),
+  note: z.literal(NOT_RECORDED_NOTE),
+});
+
+export type DraftResult =
+  | Drafted
+  | z.infer<typeof notDraftedSchema>
+  | { status: "error"; message: string };
+
+// What confirmDraft, cancelDraft and checkDraft hand the model; run-turn and fallback read it back.
 export const draftDecisionSchema = z.object({
   status: z.literal("ok"),
   outcome: z.enum(DRAFT_OUTCOMES),
@@ -352,9 +395,7 @@ export function createWriteTools(dataset: SalesDataset, port: DraftPort | null) 
       throw error;
     }
 
-    const { draftId } = await port.create(request);
-
-    return { status: "draft", draftId, summary: request.summary, note: DRAFT_NOTE };
+    return draftedOutput(await port.create(request), request.summary, DRAFT_NOTE);
   }
 
   async function scheduleDraft(input: z.infer<typeof createScheduleInputSchema>) {
@@ -523,6 +564,19 @@ export function createWriteTools(dataset: SalesDataset, port: DraftPort | null) 
       description: "Batalkan draft terakhir karena Kakak bilang batal/nggak jadi.",
       inputSchema: z.object({}),
       execute: async () => decide(port, (open) => open.cancelOpen()),
+    }),
+
+    checkDraft: tool({
+      description:
+        'Cek apakah draft terakhir sudah tersimpan, tanpa mengubah apa pun. Panggil kalau Kakak bertanya "yang tadi udah masuk belum?". Sampaikan message-nya apa adanya.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        if (port === null) return { status: "error" as const, message: NOT_READY };
+
+        const { status, message, summary } = await port.checkLatest();
+
+        return { status: "ok" as const, outcome: status, message, summary };
+      },
     }),
   };
 }

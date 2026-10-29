@@ -1,4 +1,4 @@
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, ne } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { drafts } from "../../db/schema";
 
@@ -8,6 +8,9 @@ import { drafts } from "../../db/schema";
 
 // Long enough to answer after serving a rush, short enough that a stray "ya" tomorrow does nothing.
 export const DRAFT_TTL_MS = 6 * 60 * 60 * 1000;
+
+// One total order, so the draft a turn keeps open is the one a typed "ya" finds as the latest.
+const NEWEST_FIRST = [desc(drafts.createdAt), desc(drafts.id)];
 
 export type Draft = typeof drafts.$inferSelect;
 
@@ -21,13 +24,17 @@ export type NewDraft = {
 };
 
 // One open draft per business: a new draft replaces the old one ("Ubah" = cancel + new draft), so
-// a typed "ya" can only ever mean the latest card.
-export async function createDraft(db: Db, draft: NewDraft): Promise<Draft> {
+// a typed "ya" can only ever mean the latest card. `replaced` is the open draft it took over.
+export async function createDraft(
+  db: Db,
+  draft: NewDraft,
+): Promise<{ draft: Draft; replaced: Draft | null }> {
   return db.transaction(async (tx) => {
-    await tx
+    const cancelled = await tx
       .update(drafts)
       .set({ status: "cancelled", decidedAt: draft.now })
-      .where(and(eq(drafts.businessId, draft.businessId), eq(drafts.status, "pending")));
+      .where(and(eq(drafts.businessId, draft.businessId), eq(drafts.status, "pending")))
+      .returning();
 
     const [row] = await tx
       .insert(drafts)
@@ -43,7 +50,12 @@ export async function createDraft(db: Db, draft: NewDraft): Promise<Draft> {
 
     if (!row) throw new Error("draft insert returned no row");
 
-    return row;
+    // A lapsed draft took nothing from the owner, and neither did this turn's own: no card went out.
+    const replaced = cancelled.find(
+      (old) => old.expiresAt > draft.now && old.traceId !== draft.traceId,
+    );
+
+    return { draft: row, replaced: replaced ?? null };
   });
 }
 
@@ -58,7 +70,7 @@ export async function openDraft(db: Db, businessId: string, now: Date): Promise<
         gt(drafts.expiresAt, now),
       ),
     )
-    .orderBy(desc(drafts.createdAt))
+    .orderBy(...NEWEST_FIRST)
     .limit(1);
 
   return row ?? null;
@@ -70,7 +82,7 @@ export async function latestDraft(db: Db, businessId: string, now: Date): Promis
     .select()
     .from(drafts)
     .where(and(eq(drafts.businessId, businessId), gt(drafts.expiresAt, now)))
-    .orderBy(desc(drafts.createdAt))
+    .orderBy(...NEWEST_FIRST)
     .limit(1);
 
   return row ?? null;
@@ -148,6 +160,54 @@ export async function cancelDraft(
     .returning({ id: drafts.id });
 
   return cancelled.length > 0;
+}
+
+// Drafts of a turn that sent no card for them (all if it failed, else all but `keep`) never run (Q1).
+export async function cancelTurnDrafts(
+  db: Db,
+  {
+    businessId,
+    traceId,
+    now,
+    keep,
+  }: { businessId: string; traceId: string; now: Date; keep?: string },
+) {
+  await db
+    .update(drafts)
+    .set({ status: "cancelled", decidedAt: now })
+    .where(
+      and(
+        eq(drafts.businessId, businessId),
+        eq(drafts.traceId, traceId),
+        eq(drafts.status, "pending"),
+        keep === undefined ? undefined : ne(drafts.id, keep),
+      ),
+    );
+}
+
+// An answered turn sends one card (Q1), for its newest open draft; others it made had no card.
+export async function keepTurnDraft(
+  db: Db,
+  { businessId, traceId, now }: { businessId: string; traceId: string; now: Date },
+): Promise<Draft | null> {
+  const [kept] = await db
+    .select()
+    .from(drafts)
+    .where(
+      and(
+        eq(drafts.businessId, businessId),
+        eq(drafts.traceId, traceId),
+        eq(drafts.status, "pending"),
+      ),
+    )
+    .orderBy(...NEWEST_FIRST)
+    .limit(1);
+
+  if (kept === undefined) return null;
+
+  await cancelTurnDrafts(db, { businessId, traceId, now, keep: kept.id });
+
+  return kept;
 }
 
 export async function countDrafts(db: Db, businessId: string, status: Draft["status"]) {

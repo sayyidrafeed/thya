@@ -1,6 +1,7 @@
 import type { LanguageModel } from "ai";
 import { dbDraftPort } from "../actions";
-import type { TurnDraft } from "../agent";
+import type { DraftRequest } from "../actions/kinds";
+import { REPLACED_LINE, type TurnDraft } from "../agent";
 import { WhatsAppError, type WhatsAppClient } from "../channels/whatsapp/client";
 import type { Db } from "../db/client";
 import {
@@ -56,6 +57,22 @@ function notTransactionsReply({ payments, delivery }: ImageImports): string {
   return payments ? DELIVERY_REPLIES.notEither : DELIVERY_REPLIES.notSales;
 }
 
+// The card's draft takes over any open one, and code's own reply says so.
+async function cardFor(
+  deps: PaymentImageDeps,
+  at: { businessId: string; traceId: string; now: Date },
+  request: DraftRequest,
+  note: string,
+): Promise<PaymentImageResult> {
+  const { draftId, replaced } = await dbDraftPort(deps.db, at).create(request);
+
+  return {
+    reply: replaced === null ? READ_CARD : `${READ_CARD}\n${REPLACED_LINE}`,
+    draft: { draftId, summary: request.summary },
+    note,
+  };
+}
+
 async function readDeliverySales(
   deps: PaymentImageDeps,
   {
@@ -90,13 +107,16 @@ async function readDeliverySales(
 
   if (plan.toInsert.length === 0) return { reply: plan.card, draft: null, note: plan.historyNote };
 
-  const { draftId } = await dbDraftPort(deps.db, { businessId, traceId, now }).create({
-    kind: "channel_sales.import",
-    args: { channel, imageSha256: sha256, rows: plan.toInsert },
-    summary: plan.card,
-  });
-
-  return { reply: READ_CARD, draft: { draftId, summary: plan.card }, note: plan.historyNote };
+  return cardFor(
+    deps,
+    { businessId, traceId, now },
+    {
+      kind: "channel_sales.import",
+      args: { channel, imageSha256: sha256, rows: plan.toInsert },
+      summary: plan.card,
+    },
+    plan.historyNote,
+  );
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -204,15 +224,14 @@ export async function readPaymentImage(
 
   if (plan.toInsert.length === 0) return { reply: plan.card, draft: null, note: plan.historyNote };
 
-  const { draftId } = await dbDraftPort(deps.db, { businessId, traceId, now }).create({
-    kind: "payments.import",
-    args: { imageSha256: sha256, rows: plan.toInsert },
-    summary: plan.card,
-  });
-
-  return {
-    reply: READ_CARD,
-    draft: { draftId, summary: plan.card },
-    note: plan.historyNote,
-  };
+  return cardFor(
+    deps,
+    { businessId, traceId, now },
+    {
+      kind: "payments.import",
+      args: { imageSha256: sha256, rows: plan.toInsert },
+      summary: plan.card,
+    },
+    plan.historyNote,
+  );
 }

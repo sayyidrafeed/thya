@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { DraftPort, DraftRequest } from "../actions/kinds";
+import type { DraftCheck, DraftPort, DraftRequest } from "../actions/kinds";
 import { accessInstructions, type SheetPort } from "../modules/sheets";
 import {
   fakeGoogle,
@@ -10,6 +10,7 @@ import {
 import { buildDemoSales, demoBusiness } from "../sales/demo-shop";
 import { formatRupiah } from "../sales/format";
 import { dailySales } from "../sales/report";
+import { saveClaims } from "./postcheck";
 import { runTurn } from "./run-turn";
 import { createSheetTools } from "./sheet-tools";
 import { scriptedModel } from "./testing";
@@ -19,6 +20,7 @@ const dataset = buildDemoSales(NOW);
 const options = { toolCallId: "t", messages: [], context: {} };
 const LINK = "https://docs.google.com/spreadsheets/d/laporan123/edit#gid=7";
 const EMAIL = "thya-sheets@thya-test.iam.gserviceaccount.com";
+const NOT_SAVED: DraftCheck = { status: "none", message: "Belum tersimpan.", summary: null };
 
 function laporan(rows: (string | number)[][], access: FakeSpreadsheet["access"] = "editor") {
   return new Map<string, FakeSpreadsheet>([
@@ -36,7 +38,11 @@ function laporan(rows: (string | number)[][], access: FakeSpreadsheet["access"] 
   ]);
 }
 
-async function setup(spreadsheets: Map<string, FakeSpreadsheet>, imported: number[] = []) {
+async function setup(
+  spreadsheets: Map<string, FakeSpreadsheet>,
+  imported: number[] = [],
+  { open = null, latest = NOT_SAVED }: { open?: string | null; latest?: DraftCheck } = {},
+) {
   const google = fakeGoogle(spreadsheets);
   const created: DraftRequest[] = [];
   let confirmed = 0;
@@ -46,11 +52,12 @@ async function setup(spreadsheets: Map<string, FakeSpreadsheet>, imported: numbe
     costSince: new Map([["pisang-goreng", "2026-10-01"]]),
   });
 
+  // One turn's port, as in Postgres: its drafts take over the card the owner had open, if any.
   const drafts: DraftPort = {
     create: async (request) => {
       created.push(request);
 
-      return { draftId: `d${created.length}` };
+      return { draftId: `d${created.length}`, replaced: open };
     },
     confirmOpen: async () => {
       confirmed++;
@@ -58,6 +65,8 @@ async function setup(spreadsheets: Map<string, FakeSpreadsheet>, imported: numbe
       return { status: "done", message: "Tersimpan." };
     },
     cancelOpen: async () => ({ status: "done", message: "Batal." }),
+    checkLatest: async () => latest,
+    endTurn: async () => null,
   };
 
   const sheet = createSheetTools(dataset, port, drafts);
@@ -136,6 +145,25 @@ describe("connectSheet", () => {
     expect(confirmed()).toBe(0);
   });
 
+  test("after a sheet was read this turn, an earlier save read back backs no claim (A14)", async () => {
+    const savedEarlier: DraftCheck = {
+      status: "already_done",
+      message: "Yang tadi sudah tersimpan, Kak.",
+      summary: "Catat 2 Americano",
+    };
+
+    const { sheet } = await setup(laporan([["Tanggal", "Omzet"]]), [], { latest: savedEarlier });
+    const before = await sheet.drafts?.checkLatest();
+
+    await sheet.tools.connectSheet.execute!({ url: LINK }, options);
+
+    const after = await sheet.drafts?.checkLatest();
+
+    expect(before).toEqual(savedEarlier);
+    expect(after).toMatchObject({ status: "none", summary: null });
+    expect(saveClaims(after?.message ?? "")).toEqual([]);
+  });
+
   test("a third call in one turn is refused without reaching Google", async () => {
     const { sheet, google } = await setup(laporan([["Tanggal", "Omzet"]]));
 
@@ -181,6 +209,23 @@ describe("appendDailySales", () => {
     );
     expect(google.appends()).toBe(0);
     expect(rows).toHaveLength(2);
+  });
+
+  test("a draft over the card the owner had open names it, so the owner hears it was not written", async () => {
+    const fresh = await setup(laporan([["Tanggal", "Omzet"]]));
+    const over = await setup(laporan([["Tanggal", "Omzet"]]), [], { open: "Catat 2 Americano" });
+
+    await fresh.sheet.tools.connectSheet.execute!({ url: LINK }, options);
+    await over.sheet.tools.connectSheet.execute!({ url: LINK }, options);
+
+    expect(await fresh.sheet.tools.appendDailySales.execute!(twoDays, options)).toMatchObject({
+      status: "draft",
+      replaced: null,
+    });
+    expect(await over.sheet.tools.appendDailySales.execute!(twoDays, options)).toMatchObject({
+      status: "draft",
+      replaced: { summary: "Catat 2 Americano", note: expect.stringContaining("Wajib bilang") },
+    });
   });
 
   test("a date already in the sheet is skipped and named on the card", async () => {

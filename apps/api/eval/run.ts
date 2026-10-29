@@ -7,8 +7,9 @@ import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { asSchema, type ModelMessage, type Tool } from "ai";
-import { DRAFT_UNSEEN, SAVED_BEFORE } from "../src/actions";
+import { decideConfirm, draftCheck, NOTHING_OPEN, type LatestDraft } from "../src/actions";
 import type { DraftPort, DraftRequest } from "../src/actions/kinds";
+import { salesRecorded } from "../src/actions/summary";
 import { promptFacts, runTurn, type TurnResult } from "../src/agent";
 import { buildInstructions } from "../src/agent/prompt";
 import { fakeGoogle, fakeSheetsAccess, memorySheetPort } from "../src/agent/sheet-testing";
@@ -41,51 +42,64 @@ const TRIALS_BY_CATEGORY: Record<EvalCase["category"], number> = {
 const CONCURRENCY = 2;
 
 // Drafts stay in memory per trial, so write cases never touch the shared demo seed. `saved` is
-// what G4 grades: a draft runs once, only after "ya" (decision Q1).
+// what G4 grades: a draft runs once, only after "ya" (decision Q1), by the rule dbDraftPort uses.
 function memoryDrafts() {
-  let open: DraftRequest | null = null;
-  let openedThisTurn = false;
-  let latestSaved = false;
+  let latest: (LatestDraft & { request: DraftRequest; draftId: string }) | null = null;
+  let tookOver: string | null = null;
   const saved: DraftRequest[] = [];
   const created: DraftRequest[] = [];
 
-  const nothingOpen = {
-    status: "none",
-    message: "Belum ada yang menunggu konfirmasi, Kak.",
-  } as const;
-
   const port: DraftPort = {
     create: async (request) => {
-      open = request;
-      openedThisTurn = true;
-      latestSaved = false;
+      const draftId = crypto.randomUUID();
+
+      tookOver = latest?.status === "pending" && !latest.madeThisTurn ? latest.summary : tookOver;
+      latest = {
+        request,
+        draftId,
+        status: "pending",
+        summary: request.summary,
+        madeThisTurn: true,
+      };
       created.push(request);
 
-      return { draftId: crypto.randomUUID() };
+      return { draftId, replaced: tookOver };
     },
-    // As dbDraftPort: a "ya" after the latest draft was saved hears so, and nothing runs twice.
+    endTurn: async () =>
+      latest?.status === "pending" && latest.madeThisTurn
+        ? { draftId: latest.draftId, summary: latest.summary }
+        : null,
     confirmOpen: async () => {
-      if (open !== null && openedThisTurn) return DRAFT_UNSEEN;
+      const decision = decideConfirm(latest);
 
-      if (open === null) return latestSaved ? SAVED_BEFORE : nothingOpen;
+      if (!("run" in decision)) return decision;
 
-      saved.push(open);
-      open = null;
-      latestSaved = true;
+      const { request } = decision.run;
 
-      return { status: "done", message: "Sudah dicatat, Kak." };
+      saved.push(request);
+      latest = { ...decision.run, status: "done" };
+
+      // Code quotes this beside a new sale's card, so a sale reads exactly as production's.
+      return {
+        status: "done",
+        message:
+          request.kind === "sales.record" ? salesRecorded(request.args) : "Sudah dicatat, Kak.",
+      };
     },
     cancelOpen: async () => {
-      if (open === null) return nothingOpen;
+      if (latest?.status !== "pending") return NOTHING_OPEN;
 
-      open = null;
+      latest = { ...latest, status: "cancelled" };
 
       return { status: "done", message: "Oke Kak, dibatalkan. Tidak ada yang disimpan." };
     },
+    checkLatest: async () => draftCheck(latest),
   };
 
   const nextTurn = () => {
-    openedThisTurn = false;
+    if (latest !== null) latest = { ...latest, madeThisTurn: false };
+
+    tookOver = null;
   };
 
   return { port, saved, created, nextTurn };

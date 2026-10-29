@@ -67,6 +67,35 @@ export const writeCases: EvalCaseInput[] = [
     expect: { saved: 0, forbiddenTools: [CONFIRM_TOOL], mustMatch: [/belum/i] },
   },
   {
+    // The same question after "ya" is answered from the draft owner's record, not with an apology.
+    id: "sale-text-asks-if-recorded-after-ya",
+    refs: ["Q1"],
+    suite: "capability",
+    category: "write_confirm",
+    turns: ["tadi jual 2 americano", "ya", "yang tadi udah masuk belum?"],
+    expect: {
+      saved: 1,
+      tools: [{ name: "checkDraft", args: {} }],
+      mustMatch: [/sudah|udah/i],
+      mustNotMatch: [/maaf/i],
+    },
+  },
+  {
+    // "ya" plus a new sale over an open draft: the reply says what became of the old one.
+    id: "sale-text-ya-plus-new-sale",
+    refs: ["Q1"],
+    suite: "capability",
+    category: "write_confirm",
+    turns: ["tadi jual 2 americano", "ya, sama catat 1 latte"],
+    expect: {
+      tools: [{ name: "recordSales", args: {} }],
+      mustMatch: [
+        /americano|(?:yang tadi|sebelumnya)[^.]{0,40}(?:tersimpan|tercatat|dicatat|diganti)/i,
+      ],
+      namesReplaced: true,
+    },
+  },
+  {
     // "ya" in the message that makes the draft: the owner has not seen the card, so nothing runs.
     id: "sale-text-ya-same-message",
     refs: ["Q1"],

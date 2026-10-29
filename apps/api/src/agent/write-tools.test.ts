@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { DraftOutcome, DraftPort, DraftRequest } from "../actions/kinds";
+import {
+  DRAFT_UNSEEN,
+  type DraftCheck,
+  type DraftOutcome,
+  type DraftPort,
+  type DraftRequest,
+} from "../actions/kinds";
 import { buildDemoSales, demoBusiness } from "../sales/demo-shop";
 import { saveClaims } from "./postcheck";
 import { runTurn } from "./run-turn";
@@ -12,7 +18,16 @@ const dataset = buildDemoSales(NOW);
 
 const SAVED: DraftOutcome = { status: "done", message: "Sudah dicatat, Kak." };
 
-function recordingPort(confirmed: DraftOutcome = SAVED) {
+const WAITING: DraftCheck = {
+  status: "none",
+  message: "Yang tadi belum tersimpan, Kak. Cek ringkasannya, lalu jawab ya, ubah, atau batal.",
+  summary: "Catat 3 Americano",
+};
+
+function recordingPort(
+  confirmed: DraftOutcome = SAVED,
+  { checked = WAITING, replaced = null }: { checked?: DraftCheck; replaced?: string | null } = {},
+) {
   const created: DraftRequest[] = [];
   const decided: string[] = [];
 
@@ -20,8 +35,14 @@ function recordingPort(confirmed: DraftOutcome = SAVED) {
     create: async (request) => {
       created.push(request);
 
-      return { draftId: `d${created.length}` };
+      return { draftId: `d${created.length}`, replaced };
     },
+    endTurn: async () => {
+      const last = created.at(-1);
+
+      return last === undefined ? null : { draftId: `d${created.length}`, summary: last.summary };
+    },
+    checkLatest: async () => checked,
     confirmOpen: async () => {
       decided.push("confirm");
 
@@ -409,7 +430,7 @@ describe("runTurn save claims", () => {
     });
   });
 
-  test("a draft made by the first attempt keeps its card until a confirm in the turn settles it", async () => {
+  test("a draft made by the first attempt keeps its card when the rewrite drafts nothing", async () => {
     const { port, created, decided } = recordingPort();
     const claim = { text: "Siap Kak, sudah aku catat ya." };
 
@@ -422,12 +443,6 @@ describe("runTurn save claims", () => {
       "tadi laku 3 americano",
     );
 
-    const settled = await turn(
-      [sale("Americano"), claim, confirm, { text: "Sudah dicatat, Kak." }],
-      recordingPort().port,
-      "ya, tadi laku 3 americano",
-    );
-
     expect(result).toMatchObject({
       reply: pointed,
       check: { action: "regenerated", attempts: 2 },
@@ -435,7 +450,6 @@ describe("runTurn save claims", () => {
     });
     expect(result.draft).toEqual({ draftId: "d1", summary: created[0]?.summary ?? "" });
     expect(decided).toEqual([]);
-    expect(settled.result).toMatchObject({ check: { action: "regenerated" }, draft: null });
   });
 
   test("the step forced by a made-up figure offers read tools only, so an open draft stays open", async () => {
@@ -485,6 +499,177 @@ describe("runTurn save claims", () => {
       check: { action: "regenerated", attempts: 2 },
     });
     expect(decided).toEqual(["confirm"]);
+  });
+
+  test("code's words still tell a save the first attempt made when they come from the retry", async () => {
+    const { result } = await turn(
+      [
+        confirm,
+        sale("Americano"),
+        { text: "Omzet hari ini jadi Rp9.999.999, Kak." },
+        sale("Americano"),
+        { text: "Omzet hari ini jadi Rp8.888.888, Kak." },
+      ],
+      recordingPort().port,
+      "ya, tadi laku 3 americano juga",
+    );
+
+    expect(result.check).toMatchObject({ action: "template", attempts: 2 });
+    expect(result.reply.split("\n")).toEqual([
+      SAVED.message,
+      "Belum tersimpan ya, Kak. Cek ringkasannya dulu, lalu jawab ya, ubah, atau batal.",
+    ]);
+  });
+
+  const check: ScriptStep = { tool: "checkDraft", input: {} };
+  const asked = "yang tadi udah masuk belum?";
+
+  const savedEarlier: DraftCheck = {
+    status: "already_done",
+    message: "Yang tadi sudah tersimpan, Kak.",
+    summary: "Catat 2 Americano",
+  };
+
+  test("a question after a saved draft may say so once checkDraft reads it, and confirms nothing", async () => {
+    const direct = recordingPort(SAVED, { checked: savedEarlier });
+    const nudged = recordingPort(SAVED, { checked: savedEarlier });
+    const answered = await turn([check, { text: "Sudah tersimpan, Kak." }], direct.port, asked);
+
+    const retried = await turn(
+      [{ text: "Sudah masuk, Kak." }, check, { text: "Sudah tersimpan, Kak." }],
+      nudged.port,
+      asked,
+    );
+
+    const retry = retried.model.doGenerateCalls[1];
+
+    expect(answered.result).toMatchObject({
+      reply: "Sudah tersimpan, Kak.",
+      check: { action: "none" },
+    });
+    expect(retried.result).toMatchObject({
+      reply: "Sudah tersimpan, Kak.",
+      check: { action: "regenerated", attempts: 2 },
+    });
+    expect(JSON.stringify(retry?.prompt.find((m) => m.role === "system"))).toContain(
+      "panggil checkDraft",
+    );
+    expect(retry?.toolChoice).toEqual({ type: "auto" });
+    expect([...direct.decided, ...nudged.decided]).toEqual([]);
+  });
+
+  test("a read that finds the draft still waiting backs no claim, and ends on its own words", async () => {
+    const { port, decided } = recordingPort();
+
+    const { result } = await turn(
+      [check, { text: "Sudah masuk, Kak." }, check, { text: "Sudah tercatat kok, Kak." }],
+      port,
+      asked,
+    );
+
+    expect(result).toMatchObject({ reply: WAITING.message, check: { action: "template" } });
+    expect(decided).toEqual([]);
+  });
+
+  test("an earlier save read by checkDraft backs no claim in a turn that drafts", async () => {
+    const pointed =
+      "3 Americano Thya siapkan dulu, Kak. Cek ringkasannya, lalu jawab ya, ubah, atau batal.";
+
+    const { result } = await turn(
+      [
+        check,
+        sale("Americano"),
+        { text: "Yang tadi aman, Kak. 3 Americano juga sudah aku catat." },
+        { text: pointed },
+      ],
+      recordingPort(SAVED, { checked: savedEarlier }).port,
+      "yang tadi udah masuk? tadi laku 3 americano juga",
+    );
+
+    expect(result).toMatchObject({ reply: pointed, check: { action: "regenerated" } });
+  });
+
+  test("when code must answer a failed new sale, it tells the failure, never the earlier save", async () => {
+    const steps = [sale("nasi goreng"), check, { text: "Sudah tersimpan, Kak." }];
+
+    const { result } = await turn(
+      [...steps, sale("nasi goreng"), check, { text: "Sudah tercatat kok, Kak." }],
+      recordingPort(SAVED, { checked: savedEarlier }).port,
+      "tadi laku 3 nasi goreng",
+    );
+
+    expect(result.check).toMatchObject({ action: "template", attempts: 2 });
+    expect(result.reply).toStartWith('"nasi goreng" tidak ada di daftar menu.');
+    expect(result.reply).not.toContain(savedEarlier.message);
+    expect(saveClaims(result.reply)).toEqual([]);
+    expect(result.draft).toBeNull();
+  });
+
+  test("beside a new draft, code still tells what a read of an earlier one found", async () => {
+    const failedEarlier: DraftCheck = {
+      status: "none",
+      message: "Yang ini tadi gagal disimpan, Kak. Sebutkan lagi ya, nanti Thya siapkan ulang.",
+      summary: "Catat 2 Americano",
+    };
+
+    const { result } = await turn(
+      [check, sale("Americano"), { text: "Sudah aku catat, Kak." }, { text: "Sudah kucatat." }],
+      recordingPort(SAVED, { checked: failedEarlier }).port,
+      "yang tadi udah masuk? tadi laku 3 americano",
+    );
+
+    expect(result.reply.split("\n")).toEqual([
+      failedEarlier.message,
+      "Belum tersimpan ya, Kak. Cek ringkasannya dulu, lalu jawab ya, ubah, atau batal.",
+    ]);
+  });
+
+  test("a draft over an open one carries the one it replaced, and code names it if the model will not", async () => {
+    const { port } = recordingPort(SAVED, { replaced: "Catat 2 Americano" });
+    const { recordSales } = createWriteTools(dataset, port);
+
+    const drafted = await recordSales.execute!(
+      { day: "today", date: null, items: [{ menuName: "Matcha Latte", quantity: 1 }] },
+      options,
+    );
+
+    const { result } = await turn(
+      [
+        sale("Americano"),
+        { text: "Sudah aku catat, Kak." },
+        sale("Americano"),
+        { text: "Sudah kucatat." },
+      ],
+      recordingPort(SAVED, { replaced: "Catat 2 Americano" }).port,
+      "ya, sama catat 3 americano",
+    );
+
+    expect(drafted).toMatchObject({
+      status: "draft",
+      replaced: { summary: "Catat 2 Americano", note: expect.stringContaining("Wajib bilang") },
+    });
+    expect(result.reply).toStartWith("Yang sebelumnya tidak jadi dicatat");
+    expect(result.reply).toContain("Belum tersimpan ya, Kak.");
+    expect(saveClaims(result.reply)).toEqual([]);
+  });
+
+  test("after a ya in the message that made the draft, code points at the card once", async () => {
+    const { result } = await turn(
+      [
+        sale("Americano"),
+        confirm,
+        { text: "Sudah aku catat ya Kak." },
+        { text: "Udah masuk catatan ya Kak." },
+      ],
+      recordingPort(DRAFT_UNSEEN).port,
+      "ya, tadi laku 3 americano",
+    );
+
+    expect(result).toMatchObject({
+      reply: "Belum tersimpan ya, Kak. Cek ringkasannya dulu, lalu jawab ya, ubah, atau batal.",
+      check: { action: "template", attempts: 2 },
+    });
+    expect(result.draft?.draftId).toBe("d1");
   });
 
   test("an open draft stays open when the owner only asks whether it was recorded", async () => {

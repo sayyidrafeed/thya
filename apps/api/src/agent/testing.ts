@@ -7,28 +7,29 @@ const usage = {
   outputTokens: { total: 5, text: 5, reasoning: 0 },
 };
 
-export type ScriptStep = { tool: string; input: object } | { text: string };
+export type ToolStep = { tool: string; input: object };
+
+// `parallel`: several tool calls in one step, which the SDK runs at the same time.
+export type ScriptStep = ToolStep | { parallel: ToolStep[] } | { text: string };
 
 export function scriptedModel(steps: ScriptStep[]) {
   return new MockLanguageModelV4({
     doGenerate: steps.map((step, index) =>
-      "tool" in step
+      "text" in step
         ? {
-            content: [
-              {
-                type: "tool-call" as const,
-                toolCallId: `call-${index}`,
-                toolName: step.tool,
-                input: JSON.stringify(step.input),
-              },
-            ],
-            finishReason: { unified: "tool-calls" as const, raw: "tool_calls" },
+            content: [{ type: "text" as const, text: step.text }],
+            finishReason: { unified: "stop" as const, raw: "stop" },
             usage,
             warnings: [],
           }
         : {
-            content: [{ type: "text" as const, text: step.text }],
-            finishReason: { unified: "stop" as const, raw: "stop" },
+            content: ("parallel" in step ? step.parallel : [step]).map((call, order) => ({
+              type: "tool-call" as const,
+              toolCallId: `call-${index}${"parallel" in step ? `-${order}` : ""}`,
+              toolName: call.tool,
+              input: JSON.stringify(call.input),
+            })),
+            finishReason: { unified: "tool-calls" as const, raw: "tool_calls" },
             usage,
             warnings: [],
           },

@@ -1,6 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { DraftOutcome, DraftPort } from "../actions/kinds";
+import type { DraftCheck, DraftOutcome, DraftPort } from "../actions/kinds";
 import {
   connectSheet,
   DAILY_METRICS,
@@ -21,15 +21,15 @@ import {
 } from "../sales/report";
 import type { TurnToolCall } from "./run-turn";
 import { periodFields } from "./tools";
+import { draftedOutput } from "./write-tools";
 
 // Business-features S5/S6: thin adapters to modules/sheets. Registered only when the deployment
 // has a Google service account (decision U10); every write is a draft confirmed with "Ya" (Q1).
 
-export const SHEET_TOOL_NAMES = [
-  "connectSheet",
-  "appendDailySales",
-  "importSalesFromSheet",
-] as const;
+// The sheet tools that make a draft; run-turn joins them with write-tools' DRAFT_TOOL_NAMES.
+export const SHEET_DRAFT_TOOL_NAMES = ["appendDailySales", "importSalesFromSheet"] as const;
+
+export const SHEET_TOOL_NAMES = ["connectSheet", ...SHEET_DRAFT_TOOL_NAMES] as const;
 
 export type SheetToolName = (typeof SHEET_TOOL_NAMES)[number];
 
@@ -57,6 +57,14 @@ const DRAFT_NOTE =
 const TAINTED_CONFIRM: DraftOutcome = {
   status: "none",
   message: "Untuk pesan yang membaca isi sheet, konfirmasi lewat tombol Ya di kartu ya Kak.",
+};
+
+// Nor does an earlier save back a claim then: it says nothing about what the sheet held.
+const TAINTED_CHECK: DraftCheck = {
+  status: "none",
+  message:
+    "Untuk pesan yang membaca isi sheet, yang belum Kakak tekan Ya di kartunya belum tersimpan ya Kak.",
+  summary: null,
 };
 
 const columnWords = (what: string) =>
@@ -194,19 +202,16 @@ export function createSheetTools(dataset: SalesDataset, port: SheetPort, drafts:
         if (prepared.status === "error") return prepared;
 
         const { args, summary, skipped } = prepared;
-        const { draftId } = await drafts.create({ kind: "sheet.append", args, summary });
+        const created = await drafts.create({ kind: "sheet.append", args, summary });
 
         return {
-          status: "draft" as const,
-          draftId,
-          summary,
+          ...draftedOutput(created, summary, DRAFT_NOTE),
           rows: args.values.map(({ date, value }) => ({
             date,
             value,
             display: formatDailyValue(args.metric, value),
           })),
           skipped,
-          note: DRAFT_NOTE,
         };
       },
     }),
@@ -244,16 +249,13 @@ export function createSheetTools(dataset: SalesDataset, port: SheetPort, drafts:
         if (prepared.status === "error") return prepared;
 
         const { args, summary, preview, skipped } = prepared;
-        const { draftId } = await drafts.create({ kind: "sheet.import", args, summary });
+        const created = await drafts.create({ kind: "sheet.import", args, summary });
 
         return {
-          status: "draft" as const,
-          draftId,
-          summary,
+          ...draftedOutput(created, summary, DRAFT_NOTE),
           preview,
           rowCount: args.rows.length,
           skipped: skipped.slice(0, MAX_LISTED_SKIPS),
-          note: DRAFT_NOTE,
         };
       },
     }),
@@ -265,6 +267,11 @@ export function createSheetTools(dataset: SalesDataset, port: SheetPort, drafts:
       : {
           ...drafts,
           confirmOpen: async () => (tainted ? TAINTED_CONFIRM : drafts.confirmOpen()),
+          checkLatest: async () => {
+            const check = await drafts.checkLatest();
+
+            return tainted && check.status === "already_done" ? TAINTED_CHECK : check;
+          },
         };
 
   return { tools, drafts: guarded };

@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { scriptedModel, type ScriptStep } from "../agent/testing";
+import { REPLACED_LINE } from "../agent";
+import { saveClaims } from "../agent/postcheck";
+import { scriptedModel, type ScriptStep, type ToolStep } from "../agent/testing";
 import { createWhatsAppClient } from "../channels/whatsapp/client";
 import type { WebhookMessage } from "../channels/whatsapp/inbound";
 import { fakeGraph, textMessage } from "../channels/whatsapp/testing";
@@ -213,6 +215,26 @@ describe.if(integration)("drafts over WhatsApp", () => {
     expect(after.menu.find((item) => item.name === "Americano")?.cost).toBe(6_000);
   });
 
+  test("after Ya, asking whether it went in is answered from the saved draft, not an apology", async () => {
+    const { buttons } = await draftFromCard();
+
+    await press("Ya", buttons?.[0] ?? "");
+
+    const before = await chatRows();
+
+    const asked = await say("yang tadi udah masuk belum?", [
+      { text: "Sudah masuk, Kak." },
+      { tool: "checkDraft", input: {} },
+      { text: "Sudah tersimpan, Kak: 2 Americano." },
+    ]);
+
+    expect(asked.sent.map((body) => body.text.body)).toEqual([
+      "Sudah tersimpan, Kak: 2 Americano.",
+    ]);
+    expect(JSON.stringify(asked.model.doGenerateCalls[1]?.prompt)).toContain("panggil checkDraft");
+    expect(await chatRows()).toBe(before);
+  });
+
   test("Batal or Ubah on a card that is already saved says so and records nothing twice", async () => {
     const before = await chatRows();
     const { buttons } = await draftFromCard();
@@ -226,5 +248,229 @@ describe.if(integration)("drafts over WhatsApp", () => {
     expect(edit.sent[0].text.body).toContain("sudah tersimpan");
     expect(edit.model.doGenerateCalls).toHaveLength(0);
     expect(await chatRows()).toBe(before + 1);
+  });
+
+  const DRAFT_LINE =
+    "Belum tersimpan ya, Kak. Cek ringkasannya dulu, lalu jawab ya, ubah, atau batal.";
+
+  const sale = (menuName: string, quantity = 3): ToolStep => ({
+    tool: "recordSales",
+    input: { day: "today", date: null, items: [{ menuName, quantity }] },
+  });
+
+  const claimTwice = (first: ScriptStep[], second: ScriptStep[]): ScriptStep[] => [
+    ...first,
+    { text: "Sudah aku catat ya Kak." },
+    ...second,
+    { text: "Siap, sudah tercatat." },
+  ];
+
+  const pendingIds = async () =>
+    (
+      await db
+        .select({ id: drafts.id })
+        .from(drafts)
+        .where(and(eq(drafts.businessId, businessId), eq(drafts.status, "pending")))
+    ).map((row) => row.id);
+
+  // Every message this turn sent, and the draft id its one card carries.
+  function delivered(sent: Awaited<ReturnType<typeof send>>["sent"]) {
+    const cards = sent.filter((body) => body.type === "interactive");
+    const yes: string = cards[0]?.interactive.action.buttons[0].reply.id ?? "";
+
+    return {
+      texts: sent.filter((body) => body.type === "text").map((body) => body.text.body),
+      cards,
+      cardDraft: yes.split(":")[1],
+    };
+  }
+
+  const statusOf = async (draftId = "") =>
+    (await db.select({ status: drafts.status }).from(drafts).where(eq(drafts.id, draftId)))[0]
+      ?.status;
+
+  test("a retry that drafts the sale again replaces nothing the owner saw", async () => {
+    const { sent } = await say(
+      "tadi laku 3 americano",
+      claimTwice([sale("americano")], [sale("americano")]),
+    );
+
+    const { texts, cardDraft } = delivered(sent);
+
+    expect(texts).toEqual([DRAFT_LINE]);
+    expect(await pendingIds()).toEqual([cardDraft ?? ""]);
+    await press("Batal", `draft:${cardDraft}:cancel`);
+  });
+
+  test("a retry over a card the owner had open still tells that the card is gone", async () => {
+    const open = await draftFromCard();
+
+    const { sent } = await say(
+      "ya, sama catat 3 americano",
+      claimTwice([sale("americano")], [sale("americano")]),
+    );
+
+    const { texts, cardDraft } = delivered(sent);
+
+    expect(texts).toEqual([`${REPLACED_LINE}\n${DRAFT_LINE}`]);
+    expect(await statusOf(open.buttons?.[0]?.split(":")[1])).toBe("cancelled");
+    expect(await pendingIds()).toEqual([cardDraft ?? ""]);
+    await press("Batal", `draft:${cardDraft}:cancel`);
+  });
+
+  test("a new sale that fails is told as not recorded, never as the earlier save", async () => {
+    const { buttons } = await draftFromCard();
+
+    await press("Ya", buttons?.[0] ?? "");
+
+    const before = await chatRows();
+    const check: ScriptStep = { tool: "checkDraft", input: {} };
+
+    const { sent } = await say(
+      "tadi laku 3 nasi goreng",
+      claimTwice([sale("nasi goreng"), check], [sale("nasi goreng"), check]),
+    );
+
+    expect(sent.map((body) => body.type)).toEqual(["text"]);
+    expect(sent[0].text.body).toStartWith('"nasi goreng" tidak ada di daftar menu.');
+    expect(saveClaims(sent[0].text.body)).toEqual([]);
+    expect(await chatRows()).toBe(before);
+  });
+
+  test("a retry that drafts and then fails leaves the card on its own draft, the one ya saves", async () => {
+    // The script runs out after the retry's recordSales, so the retry fails like a provider error.
+    const { sent } = await say("tadi laku 3 americano", [
+      sale("americano"),
+      { text: "Sudah aku catat ya Kak." },
+      sale("americano", 4),
+    ]);
+
+    const { texts, cards, cardDraft } = delivered(sent);
+    const before = await chatRows();
+
+    expect(texts).toEqual([DRAFT_LINE]);
+    expect(cards[0]?.interactive.body.text).toContain("4 Americano");
+    expect(await pendingIds()).toEqual([cardDraft ?? ""]);
+
+    await say("ya", [{ tool: "confirmDraft", input: {} }, { text: "Sudah dicatat, Kak." }]);
+
+    expect(await statusOf(cardDraft)).toBe("done");
+    expect(await chatRows()).toBe(before + 1);
+  });
+
+  test("two drafts made in one step leave one card, and a typed ya saves that card's draft", async () => {
+    for (let round = 0; round < 20; round++) {
+      const before = await chatRows();
+
+      const { sent } = await say(`catat 2 americano, modal matcha latte ${7_000 + round}`, [
+        {
+          parallel: [
+            sale("americano", 2),
+            {
+              tool: "setMenuCost",
+              input: {
+                menuName: "matcha latte",
+                method: "owner",
+                amount: 7_000 + round,
+                ingredients: null,
+                estimateShare: null,
+                includesPackaging: true,
+              },
+            },
+          ],
+        },
+        { text: "Cek dulu ya Kak, lalu jawab ya, ubah, atau batal." },
+      ]);
+
+      const { cards, cardDraft = "" } = delivered(sent);
+      const [kept] = await db.select().from(drafts).where(eq(drafts.id, cardDraft));
+      const sameTurn = eq(drafts.traceId, kept?.traceId ?? "");
+      const turn = await db.select().from(drafts).where(sameTurn);
+
+      expect(cards).toHaveLength(1);
+      expect(cards[0]?.interactive.body.text).toBe(kept?.summary);
+      expect(await pendingIds()).toEqual([cardDraft]);
+      expect(turn.map((row) => row.status).toSorted()).toEqual(["cancelled", "pending"]);
+
+      await say("ya", [{ tool: "confirmDraft", input: {} }, { text: "Sudah dicatat, Kak." }]);
+
+      expect(await statusOf(cardDraft)).toBe("done");
+      expect(await pendingIds()).toEqual([]);
+      expect(await chatRows()).toBe(kept?.kind === "sales.record" ? before + 1 : before);
+    }
+  }, 60_000);
+
+  test("a draft cancelled in the turn that made it gets no card", async () => {
+    const { sent } = await say("tadi laku 2 americano, eh batal deh", [
+      sale("americano", 2),
+      { tool: "cancelDraft", input: {} },
+      { text: "Oke Kak, dibatalkan. Tidak ada yang disimpan." },
+    ]);
+
+    expect(sent.map((body) => body.type)).toEqual(["text"]);
+    expect(await pendingIds()).toEqual([]);
+  });
+
+  test("in a forwarded message, an earlier save read back backs no claim (A14)", async () => {
+    const { buttons } = await draftFromCard();
+
+    await press("Ya", buttons?.[0] ?? "");
+
+    const check: ScriptStep = { tool: "checkDraft", input: {} };
+    const forwarded = textMessage(`wamid.t${++wamid}`, "Kak tadi 2 americano ya", OWNER);
+
+    const { sent } = await send({ ...forwarded, context: { forwarded: true } }, [
+      check,
+      { text: "Sudah tersimpan, Kak." },
+      check,
+      { text: "Sudah tersimpan kok, Kak." },
+    ]);
+
+    expect(sent.map((body) => body.type)).toEqual(["text"]);
+    expect(sent[0].text.body).toContain("belum tersimpan");
+    expect(saveClaims(sent[0].text.body)).toEqual([]);
+  });
+
+  // A typed ya saves the open card, then the same message names a new sale; the model claims both.
+  async function yaPlusSale(menuName: string) {
+    const { buttons } = await draftFromCard();
+    const before = await chatRows();
+
+    // A rewrite would start fresh and drop the save, so code answers before any retry.
+    const { sent } = await say(`ya, sama tadi laku 3 ${menuName}`, [
+      { tool: "confirmDraft", input: {} },
+      sale(menuName),
+      { text: "Sudah dicatat semuanya ya Kak." },
+      { text: "Siap, Kak." },
+    ]);
+
+    const { texts, cards, cardDraft } = delivered(sent);
+    const [saved = "", rest = ""] = texts[0]?.split("\n") ?? [];
+
+    expect(texts).toEqual([`${saved}\n${rest}`]);
+    expect(saved).toStartWith("Sudah dicatat, Kak: 2 Americano untuk ");
+    // The one claim left is the draft owner's own line about the card that was saved.
+    expect(saveClaims(texts[0] ?? "")).toEqual([saved]);
+    expect(await statusOf(buttons?.[0]?.split(":")[1])).toBe("done");
+    expect(await chatRows()).toBe(before + 1);
+
+    return { rest, cards, cardDraft };
+  }
+
+  test("a ya that saves the open card beside a new sale that fails ends in code's words", async () => {
+    const { rest, cards } = await yaPlusSale("nasi goreng");
+
+    expect(rest).toStartWith('"nasi goreng" tidak ada di daftar menu.');
+    expect(cards).toEqual([]);
+    expect(await pendingIds()).toEqual([]);
+  });
+
+  test("a ya that saves the open card beside a new sale points at the new card in code's words", async () => {
+    const { rest, cards, cardDraft } = await yaPlusSale("americano");
+
+    expect(rest).toBe(DRAFT_LINE);
+    expect(cards[0]?.interactive.body.text).toContain("3 Americano");
+    expect(await pendingIds()).toEqual([cardDraft ?? ""]);
+    await press("Batal", `draft:${cardDraft}:cancel`);
   });
 });

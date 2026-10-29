@@ -111,18 +111,36 @@ export const storedDraftSchema = z.discriminatedUnion("kind", [
 
 export type StoredDraft = z.infer<typeof storedDraftSchema>;
 
-// `already_done`: the latest draft was saved earlier, so nothing ran; `none`: nothing to decide.
+// `already_done`: the latest draft was saved earlier, so nothing ran; `none`: nothing ran or is saved.
 export const DRAFT_OUTCOMES = ["done", "already_done", "failed", "none"] as const;
 
 // The outcome the owner reads. `message` is written by code, never by the model.
 export type DraftOutcome = { status: (typeof DRAFT_OUTCOMES)[number]; message: string };
 
+// Decision Q1: the owner sees a card before it runs, and a card made in this turn goes out with this reply.
+export const DRAFT_UNSEEN: DraftOutcome = {
+  status: "none",
+  message: "Ringkasannya baru Thya kirim, Kak. Cek dulu, lalu jawab ya kalau sudah benar.",
+};
+
+// What became of the latest draft, read without changing it, so it never reports a save of its own.
+export type DraftCheck = {
+  status: Extract<DraftOutcome["status"], "already_done" | "none">;
+  message: string;
+  summary: string | null;
+};
+
 // How tools reach drafts without knowing the database (agent/ imports no db, engine-plan §5.1).
 export type DraftPort = {
-  create: (request: DraftRequest) => Promise<{ draftId: string }>;
+  // `replaced`: the owner's open card from an earlier turn, taken over unsaved by this turn's drafts.
+  create: (request: DraftRequest) => Promise<{ draftId: string; replaced: string | null }>;
   // Typed "ya": runs the one open draft. A tapped button goes through the channel instead.
   confirmOpen: () => Promise<DraftOutcome>;
   cancelOpen: () => Promise<DraftOutcome>;
+  // "Yang tadi udah masuk belum?": the latest draft's state; `already_done` when it was saved.
+  checkLatest: () => Promise<DraftCheck>;
+  // After an answered turn: its newest open draft, the one card; any other it made is cancelled.
+  endTurn: () => Promise<{ draftId: string; summary: string } | null>;
   // Active schedules, to list, cancel, and skip duplicates. A port without them has none.
   listSchedules?: () => Promise<ScheduleView[]>;
 };

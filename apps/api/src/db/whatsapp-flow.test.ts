@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { APICallError } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -20,7 +21,14 @@ import { loadHistory, quoteForwarded } from "../modules/conversation";
 import { demoBusiness } from "../sales/demo-shop";
 import { seedDemoSales } from "../sales/repository";
 import type { Db } from "./client";
-import { attachments, drafts, inboundMessages, outboundMessages } from "./schema";
+import {
+  agentTurns,
+  attachments,
+  drafts,
+  inboundMessages,
+  outboundMessages,
+  transactions,
+} from "./schema";
 import { freshTestDb, integration } from "./testing";
 
 const NOW = new Date("2026-10-25T14:00:00+07:00");
@@ -324,6 +332,96 @@ describe.if(integration)("whatsapp flow", () => {
     expect(run.graph.sent()).toHaveLength(1);
     expect(model.doGenerateCalls).toHaveLength(1);
     expect(await db.$count(outboundMessages, eq(outboundMessages.status, "sent"))).toBe(1);
+  });
+
+  const netraDown = {
+    "Netra 402": new APICallError({
+      message: "Payment Required",
+      url: "https://netra.example/v1/chat/completions",
+      requestBodyValues: {},
+      statusCode: 402,
+    }),
+    // What the turn's AbortSignal.timeout surfaces once the provider call is cut off.
+    "a timeout": new DOMException("The operation timed out.", "TimeoutError"),
+  };
+
+  for (const [name, failure] of Object.entries(netraDown))
+    test(`${name}: the owner gets one fixed apology after the interim line, and nothing is stored`, async () => {
+      await deliver(webhookBody([textMessage(`wamid.down-${name}`, "omzet kemarin berapa?")]));
+
+      const model = new MockLanguageModelV4({
+        doGenerate: async () => {
+          await Bun.sleep(60);
+
+          throw failure;
+        },
+      });
+
+      const run = { ...deps(fakeGraph(), model), interimAfterMs: 20 };
+      await handleAgentTurn(run, OWNER);
+      await handleAgentTurn(run, OWNER);
+
+      const [business] = await db.select({ id: inboundMessages.businessId }).from(inboundMessages);
+      const [turn] = await db.select().from(agentTurns);
+
+      expect(run.graph.sent().map((message) => message.text?.body)).toEqual([
+        REPLIES.interim,
+        REPLIES.failed,
+      ]);
+      expect(model.doGenerateCalls).toHaveLength(1);
+      expect(await loadHistory(db, business?.id ?? "")).toEqual([]);
+      expect(turn).toMatchObject({ action: "error", error: expect.any(String) });
+    });
+
+  test("a model that fails after drafting leaves no card and nothing a later ya could save", async () => {
+    await deliver(webhookBody([textMessage("wamid.half", "tadi laku 2 americano")]));
+
+    const steps = [
+      {
+        content: [
+          {
+            type: "tool-call" as const,
+            toolCallId: "c1",
+            toolName: "recordSales",
+            input: JSON.stringify({
+              day: "today",
+              date: null,
+              items: [{ menuName: "americano", quantity: 2 }],
+            }),
+          },
+        ],
+        finishReason: { unified: "tool-calls" as const, raw: "tool_calls" },
+        usage,
+        warnings: [],
+      },
+    ];
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => {
+        const next = steps.shift();
+
+        if (next === undefined) throw netraDown["Netra 402"];
+
+        return next;
+      },
+    });
+
+    const run = deps(fakeGraph(), model);
+    await handleAgentTurn(run, OWNER);
+
+    expect(run.graph.sent().map((message) => message.text?.body)).toEqual([REPLIES.failed]);
+
+    await deliver(webhookBody([textMessage("wamid.after", "ya")]));
+
+    const yes = deps(
+      fakeGraph(),
+      scriptedModel([{ tool: "confirmDraft", input: {} }, { text: "Oke Kak." }]),
+    );
+
+    await handleAgentTurn(yes, OWNER);
+
+    expect(await db.$count(drafts, eq(drafts.status, "pending"))).toBe(0);
+    expect(await db.$count(transactions, eq(transactions.source, "chat"))).toBe(0);
   });
 
   test("an unregistered number gets one fixed reply a day and no model call", async () => {

@@ -7,11 +7,14 @@ import {
   cancelDraft,
   claimDraft,
   createDraft,
+  DRAFT_TTL_MS,
   findDraft,
   finishDraft,
+  keepTurnDraft,
   latestDraft,
   openDraft,
   type Claim,
+  type Draft,
 } from "../modules/drafts";
 import { formatRupiah } from "../sales/format";
 import { DELIVERY_CHANNEL_NAMES, jakartaDate } from "../sales/report";
@@ -30,8 +33,15 @@ import {
   SheetActionError,
   type SheetsAccess,
 } from "../modules/sheets";
-import { commissionText, dayLabel, runLabel } from "./summary";
-import { storedDraftSchema, type DraftOutcome, type DraftPort, type StoredDraft } from "./kinds";
+import { commissionText, dayLabel, runLabel, salesRecorded } from "./summary";
+import {
+  DRAFT_UNSEEN,
+  storedDraftSchema,
+  type DraftCheck,
+  type DraftOutcome,
+  type DraftPort,
+  type StoredDraft,
+} from "./kinds";
 
 // Draft executors: one per kind, each a thin call into the module that owns the table. Messages
 // here go to the owner as they are, so they are plain Indonesian without technical words.
@@ -46,22 +56,52 @@ const NOT_RUN: Record<Exclude<Claim["status"], "claimed">, string> = {
 };
 
 const FAILED = "Maaf Kak, belum berhasil disimpan. Coba sebutkan lagi sebentar lagi ya.";
-const NOTHING_OPEN = "Belum ada yang menunggu konfirmasi, Kak.";
 const CANCELLED = "Oke Kak, dibatalkan. Tidak ada yang disimpan.";
 
 const SAVED_NOT_CANCELLED =
   "Yang ini sudah tersimpan, Kak, jadi tidak dibatalkan. Kalau ada yang salah, kabari tim Thya ya.";
+
+export const NOTHING_OPEN: DraftOutcome = {
+  status: "none",
+  message: "Belum ada yang menunggu konfirmasi, Kak.",
+};
 
 export const SAVED_BEFORE: DraftOutcome = {
   status: "already_done",
   message: "Yang tadi sudah tersimpan, Kak. Belum ada yang baru untuk dikonfirmasi.",
 };
 
-// Decision Q1: the owner sees a card before it runs, and a card made in this turn goes out with this reply.
-export const DRAFT_UNSEEN: DraftOutcome = {
-  status: "none",
-  message: "Ringkasannya baru Thya kirim, Kak. Cek dulu, lalu jawab ya kalau sudah benar.",
+const LATEST_STATE: Record<Draft["status"], Omit<DraftCheck, "summary">> = {
+  pending: {
+    status: "none",
+    message: "Yang tadi belum tersimpan, Kak. Cek ringkasannya, lalu jawab ya, ubah, atau batal.",
+  },
+  executing: { status: "none", message: NOT_RUN.executing },
+  done: { status: "already_done", message: "Yang tadi sudah tersimpan, Kak." },
+  failed: { status: "none", message: NOT_RUN.failed },
+  cancelled: { status: "none", message: NOT_RUN.cancelled },
+  expired: { status: "none", message: NOT_RUN.expired },
 };
+
+const NOTHING_RECENT = `Dalam ${DRAFT_TTL_MS / 3_600_000} jam terakhir belum ada catatan yang Thya siapkan, Kak.`;
+
+// The latest draft in the confirmation window, as a typed "ya" or a status question finds it.
+export type LatestDraft = Pick<Draft, "status" | "summary"> & { madeThisTurn: boolean };
+
+// One rule for every DraftPort: an unseen card waits, an open one runs, a saved one is said so.
+export function decideConfirm<T extends LatestDraft>(latest: T | null): DraftOutcome | { run: T } {
+  if (latest?.status === "done") return SAVED_BEFORE;
+
+  if (latest?.status !== "pending") return NOTHING_OPEN;
+
+  return latest.madeThisTurn ? DRAFT_UNSEEN : { run: latest };
+}
+
+export function draftCheck(latest: Pick<Draft, "status" | "summary"> | null): DraftCheck {
+  return latest === null
+    ? { status: "none", message: NOTHING_RECENT, summary: null }
+    : { ...LATEST_STATE[latest.status], summary: latest.summary };
+}
 
 // `sheets`: Google access for sheet.append; null where the deployment has no service account.
 type DraftRun = { businessId: string; draftId: string; now: Date; sheets?: SheetsAccess | null };
@@ -116,9 +156,7 @@ async function execute(db: Db, { businessId, draftId, now, sheets }: DraftRun, d
   if (draft.kind === "sales.record") {
     await recordChatSales(db, { businessId, draftId, args: draft.args });
 
-    const items = draft.args.items.map((item) => `${item.quantity} ${item.name}`).join(", ");
-
-    return `Sudah dicatat, Kak: ${items} untuk ${dayLabel(draft.args.date)}.`;
+    return salesRecorded(draft.args);
   }
 
   await setMenuCost(db, { businessId, draftId, args: draft.args });
@@ -176,23 +214,43 @@ export function dbDraftPort(
     sheets,
   }: { businessId: string; traceId: string; now: Date; sheets?: SheetsAccess | null },
 ): DraftPort {
+  // A retry redrafts over this turn's own draft, yet the owner's card it took over is still gone.
+  let tookOver: string | null = null;
+
   return {
     create: async ({ kind, args, summary }) => {
-      const draft = await createDraft(db, { businessId, kind, args, summary, traceId, now });
+      const { draft, replaced } = await createDraft(db, {
+        businessId,
+        kind,
+        args,
+        summary,
+        traceId,
+        now,
+      });
 
-      return { draftId: draft.id };
+      tookOver = replaced?.summary ?? tookOver;
+
+      return { draftId: draft.id, replaced: tookOver };
     },
 
     confirmOpen: async () => {
-      const open = await openDraft(db, businessId, now);
+      const latest = await latestDraft(db, businessId, now);
 
-      if (open?.traceId === traceId) return DRAFT_UNSEEN;
+      const decision = decideConfirm(
+        latest && { ...latest, madeThisTurn: latest.traceId === traceId },
+      );
 
-      if (open !== null) return runDraft(db, { businessId, draftId: open.id, now, sheets });
+      return "run" in decision
+        ? runDraft(db, { businessId, draftId: decision.run.id, now, sheets })
+        : decision;
+    },
 
-      return (await latestDraft(db, businessId, now))?.status === "done"
-        ? SAVED_BEFORE
-        : { status: "none", message: NOTHING_OPEN };
+    checkLatest: async () => draftCheck(await latestDraft(db, businessId, now)),
+
+    endTurn: async () => {
+      const kept = await keepTurnDraft(db, { businessId, traceId, now });
+
+      return kept && { draftId: kept.id, summary: kept.summary };
     },
 
     listSchedules: async () =>
@@ -211,7 +269,7 @@ export function dbDraftPort(
       const open = await openDraft(db, businessId, now);
 
       return open === null
-        ? { status: "none", message: NOTHING_OPEN }
+        ? NOTHING_OPEN
         : cancelOpenDraft(db, { businessId, draftId: open.id, now });
     },
   };

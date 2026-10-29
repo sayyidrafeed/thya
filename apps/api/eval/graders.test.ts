@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { EVAL_CASES, type EvalCase } from "./cases";
+import type { DraftPort } from "../src/actions/kinds";
+import { createWriteTools } from "../src/agent/write-tools";
+import { buildDemoSales } from "../src/sales/demo-shop";
+import { EVAL_CASES, EVAL_NOW, type EvalCase } from "./cases";
 import { gradeConversation, type Turn } from "./graders";
 
 function evalCase(id: string): EvalCase {
@@ -68,6 +71,69 @@ describe("no save claim", () => {
 
     expect(saveClaimGrade(unknownMenu, honest)).toMatchObject({ pass: true });
     expect(saveClaimGrade(evalCase("sale-text-confirm-ya"), "Sudah dicatat, Kak.")).toBeUndefined();
+  });
+});
+
+describe("ya plus a new sale over an open draft", () => {
+  const testCase = evalCase("sale-text-ya-plus-new-sale");
+
+  // What recordSales itself hands the model, so the grader reads the shape the tool really returns.
+  async function latteDraft(replaced: string | null) {
+    const port: DraftPort = {
+      create: async () => ({ draftId: "d1", replaced }),
+      confirmOpen: async () => ({ status: "none", message: "" }),
+      cancelOpen: async () => ({ status: "none", message: "" }),
+      checkLatest: async () => ({ status: "none", message: "", summary: null }),
+      endTurn: async () => null,
+    };
+
+    const { recordSales } = createWriteTools(buildDemoSales(EVAL_NOW), port);
+
+    return recordSales.execute!(
+      { day: "today", date: null, items: [{ menuName: "Matcha Latte", quantity: 1 }] },
+      { toolCallId: "t", messages: [], context: {} },
+    );
+  }
+
+  const failed = (reply: string, toolOutputs: unknown[]) => {
+    const turn: Turn = {
+      user: testCase.turns[1] ?? "",
+      reply,
+      calls: [{ name: "recordSales", args: {} }],
+      toolOutputs,
+    };
+
+    return gradeConversation(testCase, [turn], [], [], { created: 2, saved: 0 })
+      .filter((grade) => !grade.pass && /^(?:matches|names a replaced)/.test(grade.check))
+      .map((grade) => grade.check);
+  };
+
+  test("passes every stored reply that says what became of the old draft, not one that drops it", async () => {
+    // Verbatim from run 2026-10-29T10-04-16.170Z: saved first, merged and replaced, saved first.
+    const [savedFirst = "", merged = "", savedAgain = ""] = [
+      "Penjualan americano sudah tercatat, Kak. Untuk latte, Thya dapat menu *Matcha Latte* — cek ringkasannya ya, kalau sudah benar jawab *ya*, kalau maksudnya menu lain bilang *ubah*.",
+      "Draft-nya Thya perbarui jadi 2 Americano + 1 Matcha Latte, Kak. Yang tadi (2 Americano saja) belum tersimpan dan sudah diganti yang ini. Cek ringkasannya, lalu jawab *ya*, *ubah*, atau *batal*.",
+      "Yang tadi sudah tersimpan, Kak. Untuk 1 latte sudah Thya siapkan catatannya — cek ringkasannya dulu, lalu jawab *ya*, *ubah*, atau *batal*.",
+    ];
+
+    const kept = [await latteDraft(null)];
+    const tookOver = [await latteDraft("Catat penjualan Minggu, 25 Okt 2026:\n- 2 Americano")];
+
+    // It names Americano, so the pattern alone let it pass, yet never says the open draft is gone.
+    const quiet =
+      "Siap Kak, 2 Americano dan 1 Matcha Latte Thya siapkan. Cek ringkasannya, lalu jawab ya, ubah, atau batal.";
+
+    const silent =
+      "Siap Kak, 1 Matcha Latte yang tadi Thya siapkan. Cek ringkasannya, lalu jawab ya, ubah, atau batal.";
+
+    expect([
+      failed(savedFirst, kept),
+      failed(merged, tookOver),
+      failed(savedAgain, kept),
+      failed(quiet, kept),
+    ]).toEqual([[], [], [], []]);
+    expect(failed(quiet, tookOver)).toEqual([expect.stringMatching(/^names a replaced draft/)]);
+    expect(failed(silent, kept)).toHaveLength(1);
   });
 });
 

@@ -58,6 +58,8 @@ const evalCase = z.object({
     forbiddenTools: z.array(z.instanceof(RegExp)).optional(),
     // Graded on every turn but the last: e.g. no confirm before the owner said "ya".
     forbiddenBeforeLast: z.array(z.instanceof(RegExp)).optional(),
+    // Graded on the last turn: when a draft tool reports `replaced`, the reply must say so.
+    namesReplaced: z.boolean().optional(),
     // Advisory LLM judge (Q10, Claude in Claude Code); listed in report.md, never a gate.
     judge: z.literal("tone").optional(),
   }),

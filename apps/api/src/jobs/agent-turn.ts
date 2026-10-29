@@ -5,12 +5,13 @@ import { BUTTON_TITLE_LIMIT, CAPTION_LIMIT, TEXT_LIMIT } from "../channels/whats
 import { deliverPending, type Delivery } from "../channels/whatsapp/deliver";
 import { toWhatsAppText, splitText } from "../channels/whatsapp/format";
 import { messageSchema, readContent } from "../channels/whatsapp/inbound";
-import type { DraftOutcome } from "../actions/kinds";
+import type { DraftCheck, DraftOutcome } from "../actions/kinds";
 import { renderProfile } from "../profile";
 import { COMPACTION_THRESHOLD_CHARS } from "./compaction";
 import { readPaymentImage } from "./payment-image";
 import type { Db } from "../db/client";
 import { findBusinessByPhone, type Business } from "../modules/business";
+import { cancelTurnDrafts } from "../modules/drafts";
 import {
   commitTurn,
   countInboundSince,
@@ -59,6 +60,14 @@ const TAINTED_CONFIRM: DraftOutcome = {
   status: "none",
   message:
     "Untuk pesan yang ada gambarnya atau pesan terusan, konfirmasi lewat tombol Ya di kartu ya Kak.",
+};
+
+// An earlier save says nothing about someone else's words, so it backs no claim in this turn.
+const TAINTED_CHECK: DraftCheck = {
+  status: "none",
+  message:
+    "Untuk pesan yang ada gambarnya atau pesan terusan, yang belum Kakak tekan Ya di kartunya belum tersimpan ya Kak.",
+  summary: null,
 };
 
 // Engine-plan A9: more than this many messages in a minute gets one throttle reply, no model turn.
@@ -268,7 +277,17 @@ async function runAgent(
     conceptEvents: known,
     now,
     formatReply: toWhatsAppText,
-    drafts: tainted ? { ...drafts, confirmOpen: async () => TAINTED_CONFIRM } : drafts,
+    drafts: tainted
+      ? {
+          ...drafts,
+          confirmOpen: async () => TAINTED_CONFIRM,
+          checkLatest: async () => {
+            const check = await drafts.checkLatest();
+
+            return check.status === "already_done" ? TAINTED_CHECK : check;
+          },
+        }
+      : drafts,
     attachments: attachmentPort(db, business.id, now),
     memory: await turnMemory(db, business.id, now),
     deliveryImport: deps.deliveryImport ?? false,
@@ -356,6 +375,8 @@ async function answer(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const durationMs = Date.now() - started;
+
+      await cancelTurnDrafts(deps.db, { businessId: business.id, traceId, now: deps.now() });
 
       await recordFailedTurn(deps.db, {
         traceId,

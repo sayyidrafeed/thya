@@ -11,6 +11,10 @@ export type {
 
 export { promptFacts } from "./prompt";
 
+export { REPLACED_LINE } from "./fallback";
+
+export { draftDecisionSchema, draftedSchema } from "./write-tools";
+
 export { ungroundedNumbers } from "./postcheck";
 
 export { repairHistory } from "./context";

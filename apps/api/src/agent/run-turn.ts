@@ -16,8 +16,13 @@ import {
 } from "./prompt";
 import { fallbackReply } from "./fallback";
 import { createSalesTools, SALES_TOOL_NAMES, type SalesToolName } from "./tools";
-import { createWriteTools, draftDecisionSchema, type WriteToolName } from "./write-tools";
-import { createSheetTools, sheetAccessReply, type SheetToolName } from "./sheet-tools";
+import {
+  createWriteTools,
+  draftDecisionSchema,
+  DRAFT_TOOL_NAMES,
+  type WriteToolName,
+} from "./write-tools";
+import { createSheetTools, SHEET_DRAFT_TOOL_NAMES, sheetAccessReply } from "./sheet-tools";
 import { createChartTool, type Attachment, type AttachmentPort } from "./chart-tool";
 
 export const MAX_STEPS = 5;
@@ -63,8 +68,8 @@ export type TurnInput = {
   sheets?: SheetPort;
 };
 
-// The draft a write tool prepared this turn; the channel shows it as a card with Ya/Ubah/Batal.
-export type TurnDraft = { draftId: string; summary: string };
+// The draft owner's open draft after this turn; the channel shows it as a card with Ya/Ubah/Batal.
+export type TurnDraft = NonNullable<Awaited<ReturnType<DraftPort["endTurn"]>>>;
 
 export type TurnResult = {
   reply: string;
@@ -242,31 +247,44 @@ function grounded(input: TurnInput, chosen: Attempt) {
   return { reply: dropped, ungrounded };
 }
 
-const DRAFT_TOOLS = new Set<string>([
-  "recordSales",
-  "setMenuCost",
-  "setChannelCommission",
-  "createSchedule",
-  "cancelSchedule",
-  "appendDailySales",
-  "importSalesFromSheet",
-] satisfies (WriteToolName | SheetToolName)[]);
+const DRAFT_TOOLS = new Set<string>([...DRAFT_TOOL_NAMES, ...SHEET_DRAFT_TOOL_NAMES]);
 
-// Saved now, or by an earlier "ya" when no attempt drafted anything new; a cancel never counts.
-function saveReported(attempts: Attempt[]): boolean {
-  const calls = attempts.flatMap(({ toolCalls }) => toolCalls);
+// The draft owner's word on a save: confirmDraft ran or found it, checkDraft only read it.
+const SAVE_REPORTERS = new Set<string>(["confirmDraft", "checkDraft"] satisfies WriteToolName[]);
 
-  const outcomes = calls.flatMap((call): DraftOutcome["status"][] => {
-    const decision = draftDecisionSchema.safeParse(call.output);
+function reportedSave(call: TurnToolCall): DraftOutcome["status"] | null {
+  const decision = draftDecisionSchema.safeParse(call.output);
 
-    return call.toolName === "confirmDraft" && decision.success ? [decision.data.outcome] : [];
-  });
+  return SAVE_REPORTERS.has(call.toolName) && decision.success ? decision.data.outcome : null;
+}
 
-  if (outcomes.includes("done")) return true;
-
-  return (
-    outcomes.includes("already_done") && !calls.some(({ toolName }) => DRAFT_TOOLS.has(toolName))
+// Words that drafted, or tried to, are new: never saved in their turn (Q1), so no save backs them.
+function drafting(attempts: Attempt[]): boolean {
+  return attempts.some(({ toolCalls }) =>
+    toolCalls.some(({ toolName }) => DRAFT_TOOLS.has(toolName)),
   );
+}
+
+const reportedSaves = (attempts: Attempt[]) =>
+  attempts.flatMap(({ toolCalls }) => toolCalls.map(reportedSave));
+
+// Saved now, or by an earlier "ya", when no attempt drafted anything new; a cancel never counts.
+function saveReported(attempts: Attempt[]): boolean {
+  const outcomes = reportedSaves(attempts);
+
+  return (outcomes.includes("done") || outcomes.includes("already_done")) && !drafting(attempts);
+}
+
+// A save stays true whichever attempt made it; other results may be undone by a later attempt.
+function callsToTell(attempts: Attempt[], chosen: Attempt): TurnToolCall[] {
+  const calls = attempts.flatMap((candidate) =>
+    candidate === chosen
+      ? candidate.toolCalls
+      : candidate.toolCalls.filter((call) => reportedSave(call) === "done"),
+  );
+
+  // A turn that drafts is not told of an earlier save: "yang tadi" could read as the new words.
+  return drafting(attempts) ? calls.filter((call) => reportedSave(call) !== "already_done") : calls;
 }
 
 type Found = { ungrounded: UngroundedNumber[]; claims: string[] };
@@ -284,7 +302,7 @@ function checkReply(
 
 // confirmDraft only on the owner's own yes: an open draft must never be saved to make a claim true.
 const CLAIM_FEEDBACK =
-  "Catatan sistem: jawaban sebelumnya bilang sesuatu sudah dicatat atau tersimpan, padahal di pesan ini tidak ada hasil confirmDraft yang menyatakannya. Kalau pesan terakhir Kakak berupa ya/oke/betul/simpan, termasuk ya lagi untuk draft yang tadi sudah disimpan, panggil confirmDraft lalu sampaikan message-nya apa adanya: hasilnya memberi tahu kalau yang tadi sudah tersimpan, dan tidak ada yang disimpan dua kali. Kalau pesan terakhir Kakak bukan jawaban setuju, misalnya pertanyaan, jangan panggil confirmDraft, dan tulis ulang tanpa menyatakan apa pun sudah dicatat, tercatat, disimpan, atau masuk catatan. Kalau ada draft, minta Kakak cek ringkasannya lalu jawab ya, ubah, atau batal.";
+  "Catatan sistem: jawaban sebelumnya bilang sesuatu sudah dicatat atau tersimpan, padahal di pesan ini tidak ada hasil confirmDraft atau checkDraft yang menyatakannya. Kalau pesan terakhir Kakak berupa ya/oke/betul/simpan, termasuk ya lagi untuk draft yang tadi sudah disimpan, panggil confirmDraft lalu sampaikan message-nya apa adanya: hasilnya memberi tahu kalau yang tadi sudah tersimpan, dan tidak ada yang disimpan dua kali. Kalau pesan terakhir Kakak bukan jawaban setuju, misalnya pertanyaan, jangan panggil confirmDraft. Kalau Kakak bertanya apakah yang tadi sudah tersimpan, panggil checkDraft lalu sampaikan message-nya apa adanya. Selain itu tulis ulang tanpa menyatakan apa pun sudah dicatat, tercatat, disimpan, atau masuk catatan. Kalau ada draft, minta Kakak cek ringkasannya lalu jawab ya, ubah, atau batal.";
 
 function retryFeedback({ ungrounded, claims }: Found): string {
   const listed = ungrounded.map(({ text }) => text).join(", ");
@@ -312,27 +330,6 @@ async function retry(
     // the first attempt's tool results: the owner never sees a technical error (Q2).
     return null;
   }
-}
-
-const draftOutputSchema = z.object({
-  status: z.literal("draft"),
-  draftId: z.string(),
-  summary: z.string(),
-});
-
-const SETTLED: DraftOutcome["status"][] = ["done", "failed"];
-
-// The draft the turn leaves open: a confirm or cancel that ran after it settled it, so no card.
-function lastDraft(toolCalls: TurnToolCall[]): TurnDraft | null {
-  return toolCalls.reduce<TurnDraft | null>((open, call) => {
-    const draft = draftOutputSchema.safeParse(call.output);
-
-    if (draft.success) return { draftId: draft.data.draftId, summary: draft.data.summary };
-
-    const decision = draftDecisionSchema.safeParse(call.output);
-
-    return decision.success && SETTLED.includes(decision.data.outcome) ? null : open;
-  }, null);
 }
 
 const choicesOutputSchema = z.object({ choices: z.array(z.string()).min(2).max(3) });
@@ -370,7 +367,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
 
   const attempts: Attempt[] = [];
 
-  function finish(
+  async function finish(
     chosen: Attempt,
     checked: string,
     action: TurnAction,
@@ -385,8 +382,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
       attachments: chosen.attachments,
       conceptEvents: chosen.conceptEvents,
       check: { action, ungrounded, attempts: tries },
-      // A draft made by an earlier attempt is still open, so its card goes out with this reply.
-      draft: lastDraft(attempts.flatMap(({ toolCalls }) => toolCalls)),
+      draft: (await input.drafts?.endTurn()) ?? null,
       choices: lastChoices(chosen.toolCalls),
       promptHash: promptHash(input),
       usage: sumUsage(attempts),
@@ -414,8 +410,11 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     firstCheck.claims.length === 0 &&
     first.toolCalls.length === 0;
 
+  // A fresh retry never sees this turn's own save, so a claim beside it is code's to tell.
+  const codeTells = firstCheck.claims.length > 0 && reportedSaves(attempts).includes("done");
+
   // An empty answer means the step limit ran out; only a made-up number or claimed save is retried.
-  if (firstCheck.ungrounded.length > 0 || firstCheck.claims.length > 0) {
+  if (!codeTells && (firstCheck.ungrounded.length > 0 || firstCheck.claims.length > 0)) {
     tries += 1;
 
     const second = await retry(input, abortSignal, firstCheck, forcedTool);
@@ -435,7 +434,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
 
   const withTools = attempts.findLast((candidate) => candidate.toolCalls.length > 0) ?? first;
 
-  const fallback = fallbackReply(withTools.toolCalls, {
+  const fallback = fallbackReply(callsToTell(attempts, withTools), {
     forcedTool,
     claimOnly: firstCheck.ungrounded.length === 0 && firstCheck.claims.length > 0,
   });

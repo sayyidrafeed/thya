@@ -1,7 +1,11 @@
 import { saveClaims, ungroundedNumbers } from "../src/agent/postcheck";
+import { draftedSchema } from "../src/agent/write-tools";
 import type { EvalCase, ToolCall } from "./cases";
 
 const WHATSAPP_MAX_CHARS = 4096;
+
+// A draft that took over the owner's open card; the reply has to say the old one is gone.
+const NAMES_REPLACED = /sebelumnya|diganti|tidak jadi|belum tersimpan/i;
 
 // G5 heuristic: common English words that should never appear in an Indonesian reply.
 const ENGLISH_WORDS = /\b(the|you|your|please|revenue|profit|sales|today|week|month)\b/i;
@@ -95,6 +99,22 @@ function gradeSaveClaims(expect: EvalCase["expect"], turns: Turn[]): Grade[] {
   return [{ check: "no save claim", pass: claims.length === 0, detail: claims.join(" | ") }];
 }
 
+function gradeReplaced(expect: EvalCase["expect"], last: Turn): Grade[] {
+  if (!expect.namesReplaced) return [];
+
+  const replaced = last.toolOutputs.some(
+    (output) => draftedSchema.safeParse(output).data?.replaced,
+  );
+
+  return [
+    {
+      check: `names a replaced draft ${NAMES_REPLACED}`,
+      pass: !replaced || NAMES_REPLACED.test(last.reply),
+      detail: replaced ? "replaced" : "nothing replaced",
+    },
+  ];
+}
+
 export function gradeConversation(
   testCase: EvalCase,
   turns: Turn[],
@@ -159,6 +179,7 @@ export function gradeConversation(
           },
         ]),
     ...gradeSaveClaims(expect, turns),
+    ...gradeReplaced(expect, last),
     {
       check: "every number grounded",
       pass: ungrounded.length === 0,
