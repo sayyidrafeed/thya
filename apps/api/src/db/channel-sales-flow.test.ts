@@ -71,7 +71,7 @@ describe.if(integration)("delivery app sales screenshots (DELIVERY_IMPORT_ENABLE
       {
         db,
         model: scriptedModel(script),
-        delivery: { db, client, loadImage: async () => null },
+        delivery: { db, client, loadImage: async () => null, now: () => at },
         now: () => at,
         paymentsImport: false,
         deliveryImport: true,

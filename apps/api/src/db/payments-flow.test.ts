@@ -82,7 +82,7 @@ describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
       {
         db,
         model: scriptedModel(script),
-        delivery: { db, client, loadImage: async () => null },
+        delivery: { db, client, loadImage: async () => null, now: () => at },
         now: () => at,
         paymentsImport: true,
       },

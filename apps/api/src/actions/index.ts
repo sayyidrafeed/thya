@@ -2,6 +2,7 @@ import type { AttachmentPort } from "../agent";
 import type { Db } from "../db/client";
 import { saveAttachment } from "../modules/attachments";
 import { insertChannelSales, setCommission } from "../modules/channel-sales";
+import { outboundState } from "../modules/conversation";
 import { insertPayments } from "../modules/payments-import";
 import {
   cancelDraft,
@@ -71,6 +72,13 @@ export const SAVED_BEFORE: DraftOutcome = {
   message: "Yang tadi sudah tersimpan, Kak. Belum ada yang baru untuk dikonfirmasi.",
 };
 
+// The card never reached the owner (its turn died before sending it, or the send failed).
+export const CARD_LOST: DraftOutcome = {
+  status: "none",
+  message:
+    "Ringkasan yang tadi tidak sampai ke Kakak, jadi belum ada yang disimpan. Sebutkan lagi ya, nanti Thya siapkan ulang.",
+};
+
 const LATEST_STATE: Record<Draft["status"], Omit<DraftCheck, "summary">> = {
   pending: {
     status: "none",
@@ -85,16 +93,43 @@ const LATEST_STATE: Record<Draft["status"], Omit<DraftCheck, "summary">> = {
 
 const NOTHING_RECENT = `Dalam ${DRAFT_TTL_MS / 3_600_000} jam terakhir belum ada catatan yang Thya siapkan, Kak.`;
 
-// The latest draft in the confirmation window, as a typed "ya" or a status question finds it.
-export type LatestDraft = Pick<Draft, "status" | "summary"> & { madeThisTurn: boolean };
+// When the draft's card went out, against the owner's words this turn answers: "before" them, so
+// they could read it first; "after" them (this turn's own card, or one sent while they typed); or
+// "never" (a turn that died before sending it, or a failed send).
+export type CardSent = "before" | "after" | "never";
 
-// One rule for every DraftPort: an unseen card waits, an open one runs, a saved one is said so.
+// The latest draft in the confirmation window, as a typed "ya" or a status question finds it.
+export type LatestDraft = Pick<Draft, "status" | "summary"> & { cardSent: CardSent };
+
+// The outbox key of a draft's card, which carries its Ya/Ubah/Batal buttons.
+export const cardKey = (draftId: string) => `card:${draftId}`;
+
+// One rule for every DraftPort: a typed "ya" runs only a card the owner had before writing it, and
+// a saved one is said so.
 export function decideConfirm<T extends LatestDraft>(latest: T | null): DraftOutcome | { run: T } {
   if (latest?.status === "done") return SAVED_BEFORE;
 
   if (latest?.status !== "pending") return NOTHING_OPEN;
 
-  return latest.madeThisTurn ? DRAFT_UNSEEN : { run: latest };
+  if (latest.cardSent === "never") return CARD_LOST;
+
+  return latest.cardSent === "before" ? { run: latest } : DRAFT_UNSEEN;
+}
+
+async function cardSent(
+  db: Db,
+  draft: Draft,
+  turn: { traceId: string; ownerWroteAt: Date | undefined },
+): Promise<CardSent> {
+  if (draft.traceId === turn.traceId) return "after";
+
+  const card = await outboundState(db, cardKey(draft.id));
+
+  if (card === null || card.status === "failed") return "never";
+
+  return card.sentAt !== null && turn.ownerWroteAt !== undefined && card.sentAt < turn.ownerWroteAt
+    ? "before"
+    : "after";
 }
 
 export function draftCheck(latest: Pick<Draft, "status" | "summary"> | null): DraftCheck {
@@ -205,6 +240,8 @@ export async function cancelOpenDraft(
     : { status: "none", message: NOT_RUN.cancelled };
 }
 
+// `ownerWroteAt`: when the owner wrote the earliest message this turn answers. Without it no typed
+// "ya" runs anything, since no card can be shown to have come first.
 export function dbDraftPort(
   db: Db,
   {
@@ -212,7 +249,14 @@ export function dbDraftPort(
     traceId,
     now,
     sheets,
-  }: { businessId: string; traceId: string; now: Date; sheets?: SheetsAccess | null },
+    ownerWroteAt,
+  }: {
+    businessId: string;
+    traceId: string;
+    now: Date;
+    sheets?: SheetsAccess | null;
+    ownerWroteAt?: Date;
+  },
 ): DraftPort {
   // A retry redrafts over this turn's own draft, yet the owner's card it took over is still gone.
   let tookOver: string | null = null;
@@ -237,7 +281,7 @@ export function dbDraftPort(
       const latest = await latestDraft(db, businessId, now);
 
       const decision = decideConfirm(
-        latest && { ...latest, madeThisTurn: latest.traceId === traceId },
+        latest && { ...latest, cardSent: await cardSent(db, latest, { traceId, ownerWroteAt }) },
       );
 
       return "run" in decision

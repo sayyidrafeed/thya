@@ -1,5 +1,5 @@
 import type { LanguageModel, ModelMessage } from "ai";
-import { attachmentPort, cancelOpenDraft, dbDraftPort, runDraft } from "../actions";
+import { attachmentPort, cancelOpenDraft, cardKey, dbDraftPort, runDraft } from "../actions";
 import { renderSummary, runTurn, type TurnDraft, type TurnResult } from "../agent";
 import { BUTTON_TITLE_LIMIT, CAPTION_LIMIT, TEXT_LIMIT } from "../channels/whatsapp/client";
 import { deliverPending, type Delivery } from "../channels/whatsapp/deliver";
@@ -137,7 +137,7 @@ function choicesOutbound(to: string, key: string, reply: string, choices: string
 
 function draftCard(to: string, draft: TurnDraft): Outbound {
   return {
-    key: `card:${draft.draftId}`,
+    key: cardKey(draft.draftId),
     payload: {
       type: "buttons",
       to,
@@ -260,14 +260,25 @@ async function turnMemory(db: Db, businessId: string, now: Date) {
 async function runAgent(
   deps: AgentTurnDeps,
   business: Business,
-  { texts, tainted }: { texts: string[]; tainted: boolean },
+  {
+    texts,
+    tainted,
+    ownerWroteAt,
+  }: { texts: string[]; tainted: boolean; ownerWroteAt: Date | undefined },
   traceId: string,
 ) {
   const { db } = deps;
   const now = deps.now();
   const known = await loadConceptEvents(db, business.id);
   const owner: ModelMessage = { role: "user", content: texts.join("\n") };
-  const drafts = dbDraftPort(db, { businessId: business.id, traceId, now, sheets: deps.sheets });
+
+  const drafts = dbDraftPort(db, {
+    businessId: business.id,
+    traceId,
+    now,
+    sheets: deps.sheets,
+    ownerWroteAt,
+  });
 
   const turn = await runTurn({
     model: deps.model,
@@ -350,7 +361,15 @@ async function answer(
     wamids,
     texts,
     tainted,
-  }: { business: Business; phone: string; wamids: string[]; texts: string[]; tainted: boolean },
+    ownerWroteAt,
+  }: {
+    business: Business;
+    phone: string;
+    wamids: string[];
+    texts: string[];
+    tainted: boolean;
+    ownerWroteAt: Date | undefined;
+  },
 ) {
   const traceId = newTraceId();
   const started = Date.now();
@@ -368,10 +387,12 @@ async function answer(
 
     try {
       // The interim line must be out before the reply is queued, or both sends race on the outbox.
-      result = await runAgent(deps, business, { texts, tainted }, traceId).finally(async () => {
-        clearTimeout(timer);
-        await interim;
-      });
+      result = await runAgent(deps, business, { texts, tainted, ownerWroteAt }, traceId).finally(
+        async () => {
+          clearTimeout(timer);
+          await interim;
+        },
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const durationMs = Date.now() - started;
@@ -542,8 +563,16 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
     ]),
   });
 
+  // The batch's oldest message: a typed "ya" in it counts only for a card that went out before it.
   if (batch.texts.length > 0)
-    await answer(deps, { business, phone, wamids, texts: batch.texts, tainted: batch.tainted });
+    await answer(deps, {
+      business,
+      phone,
+      wamids,
+      texts: batch.texts,
+      tainted: batch.tainted,
+      ownerWroteAt: current[0]?.receivedAt,
+    });
 
   await deliverPending(delivery, phone);
 }

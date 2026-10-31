@@ -6,6 +6,8 @@ export type Delivery = {
   db: Db;
   client: WhatsAppClient;
   loadImage: (attachmentId: string) => Promise<Uint8Array | null>;
+  // Stamps each send; a typed "ya" counts only for a card sent before the owner wrote it.
+  now: () => Date;
 };
 
 async function sendImage(
@@ -60,7 +62,7 @@ export async function deliverPending(delivery: Delivery, to: string): Promise<nu
   for (const { id, payload } of await pendingOutbound(delivery.db, to)) {
     try {
       const wamid = await send(delivery, payload);
-      await markOutbound(delivery.db, id, { status: "sent", wamid });
+      await markOutbound(delivery.db, id, { status: "sent", wamid, sentAt: delivery.now() });
       sent += 1;
     } catch (error) {
       if (!(error instanceof WhatsAppError) || error.retryable) throw error;

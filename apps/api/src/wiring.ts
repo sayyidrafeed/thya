@@ -15,6 +15,7 @@ export function whatsappDelivery(db: Db): Delivery | null {
     db,
     client: createWhatsAppClient(whatsapp),
     loadImage: (attachmentId) => loadAttachment(db, attachmentId, new Date()),
+    now: () => new Date(),
   };
 }
 

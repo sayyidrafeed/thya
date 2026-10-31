@@ -132,6 +132,7 @@ describe.if(integration)("sheets over WhatsApp", () => {
           db,
           client: createWhatsAppClient(config, graph.fetcher),
           loadImage: async () => null,
+          now: () => at,
         },
         now: () => at,
         paymentsImport: false,

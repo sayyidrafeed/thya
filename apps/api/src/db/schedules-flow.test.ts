@@ -64,7 +64,7 @@ describe.if(integration)("schedules", () => {
       {
         db,
         model: scriptedModel(script),
-        delivery: { db, client, loadImage: async () => null },
+        delivery: { db, client, loadImage: async () => null, now: () => at },
         now: () => at,
         paymentsImport: false,
       },
@@ -137,6 +137,7 @@ describe.if(integration)("schedules", () => {
           db,
           client: createWhatsAppClient(config, confirm.fetcher),
           loadImage: async () => null,
+          now: () => NOW,
         },
         now: () => NOW,
         paymentsImport: false,
@@ -195,6 +196,7 @@ describe.if(integration)("schedules", () => {
           db,
           client: createWhatsAppClient(config, confirm.fetcher),
           loadImage: async () => null,
+          now: () => NOW,
         },
         now: () => NOW,
         paymentsImport: false,
@@ -261,6 +263,7 @@ describe.if(integration)("schedules", () => {
       db,
       client: createWhatsAppClient(config, graph.fetcher),
       loadImage: async () => png,
+      now: () => NOW,
     };
 
     await deliverPending(delivery, OWNER);

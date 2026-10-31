@@ -294,16 +294,26 @@ export async function pendingOutbound(db: Db, to: string): Promise<PendingOutbou
 export async function markOutbound(
   db: Db,
   id: string,
-  result: { status: "sent"; wamid: string } | { status: "failed"; error: string },
+  result: { status: "sent"; wamid: string; sentAt: Date } | { status: "failed"; error: string },
 ) {
   await db
     .update(outboundMessages)
     .set(
       result.status === "sent"
-        ? { status: "sent", wamid: result.wamid, sentAt: new Date() }
+        ? { status: "sent", wamid: result.wamid, sentAt: result.sentAt }
         : { status: "failed", error: result.error },
     )
     .where(eq(outboundMessages.id, id));
+}
+
+// The fate of one outbox row so far, by its idempotency key; null when nothing was committed.
+export async function outboundState(db: Db, idempotencyKey: string) {
+  const [row] = await db
+    .select({ status: outboundMessages.status, sentAt: outboundMessages.sentAt })
+    .from(outboundMessages)
+    .where(eq(outboundMessages.idempotencyKey, idempotencyKey));
+
+  return row ?? null;
 }
 
 export type DeliveryStatus = {

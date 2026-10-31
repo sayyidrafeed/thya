@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { DRAFT_UNSEEN } from "../actions/kinds";
 import { REPLACED_LINE } from "../agent";
 import { saveClaims } from "../agent/postcheck";
 import { scriptedModel, type ScriptStep, type ToolStep } from "../agent/testing";
@@ -55,7 +56,13 @@ describe.if(integration)("drafts over WhatsApp", () => {
   let clock = NOW.getTime();
   const later = () => new Date((clock += 3 * 60_000));
 
-  async function send(message: WebhookMessage, script: ScriptStep[] = [], at = later()) {
+  // `writtenAt`: when the owner wrote it, if earlier than the turn that answers it at `at`.
+  async function send(
+    message: WebhookMessage,
+    script: ScriptStep[] = [],
+    at = later(),
+    writtenAt = at,
+  ) {
     const graph = fakeGraph();
     const model = scriptedModel(script);
     const client = createWhatsAppClient(config, graph.fetcher);
@@ -66,7 +73,7 @@ describe.if(integration)("drafts over WhatsApp", () => {
         phone: OWNER,
         type: message.type,
         payload: message,
-        receivedAt: at,
+        receivedAt: writtenAt,
       },
     ]);
 
@@ -74,7 +81,7 @@ describe.if(integration)("drafts over WhatsApp", () => {
       {
         db,
         model,
-        delivery: { db, client, loadImage: async () => null },
+        delivery: { db, client, loadImage: async () => null, now: () => at },
         now: () => at,
         paymentsImport: false,
       },
@@ -472,5 +479,43 @@ describe.if(integration)("drafts over WhatsApp", () => {
     expect(cards[0]?.interactive.body.text).toContain("3 Americano");
     expect(await pendingIds()).toEqual([cardDraft ?? ""]);
     await press("Batal", `draft:${cardDraft}:cancel`);
+  });
+
+  test("a ya typed while the card was still on its way waits for the owner to read it", async () => {
+    const before = await chatRows();
+    const answeredAt = later();
+    const ago = (ms: number) => new Date(answeredAt.getTime() - ms);
+    const typed = (text: string) => textMessage(`wamid.t${++wamid}`, text, OWNER);
+
+    // The owner asks, then types "ya" 5 s later while that turn is still answering; the card it
+    // drafts goes out at `answeredAt`, so the next turn answers the "ya".
+    const asked = await send(
+      typed("tadi laku 2 americano"),
+      recordTwoAmericano,
+      answeredAt,
+      ago(10_000),
+    );
+
+    const { cardDraft } = delivered(asked.sent);
+
+    const early = await send(
+      typed("ya"),
+      [{ tool: "confirmDraft", input: {} }, { text: DRAFT_UNSEEN.message }],
+      later(),
+      ago(5_000),
+    );
+
+    expect(early.sent.map((body) => body.text.body)).toEqual([DRAFT_UNSEEN.message]);
+    expect(await statusOf(cardDraft)).toBe("pending");
+    expect(await chatRows()).toBe(before);
+
+    const read = await say("ya", [
+      { tool: "confirmDraft", input: {} },
+      { text: "Sudah dicatat, Kak." },
+    ]);
+
+    expect(read.sent.map((body) => body.text.body)).toEqual(["Sudah dicatat, Kak."]);
+    expect(await statusOf(cardDraft)).toBe("done");
+    expect(await chatRows()).toBe(before + 1);
   });
 });

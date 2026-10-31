@@ -1,56 +1,71 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { drafts, draftStatus, transactions } from "../db/schema";
+import { drafts, draftStatus, outboundMessages, transactions } from "../db/schema";
 import { freshTestDb, integration } from "../db/testing";
 import { createPhoneBusiness } from "../modules/business";
+import { commitTurn, markOutbound } from "../modules/conversation";
 import { DRAFT_TTL_MS } from "../modules/drafts";
 import { demoBusiness } from "../sales/demo-shop";
 import { loadSalesDataset, seedDemoSales } from "../sales/repository";
 import {
+  CARD_LOST,
+  cardKey,
   dbDraftPort,
   decideConfirm,
   draftCheck,
   NOTHING_OPEN,
   runDraft,
   SAVED_BEFORE,
+  type CardSent,
   type LatestDraft,
 } from ".";
 import { DRAFT_UNSEEN } from "./kinds";
 
 const NOW = new Date("2026-10-25T14:00:00+07:00");
 
+// The owner's next message, a minute after the card went out with the reply.
+const NEXT = new Date(NOW.getTime() + 60_000);
+
+const CARD_SENT = ["before", "after", "never"] as const satisfies readonly CardSent[];
+
 describe("the confirm rule every draft port shares", () => {
-  test("a typed ya runs only an open draft made in an earlier turn; a saved one is said so", () => {
+  test("a typed ya runs only an open draft whose card the owner had first; a saved one is said so", () => {
     const answers = draftStatus.enumValues.flatMap((status) =>
-      [true, false].map((madeThisTurn) => {
-        const latest = { status, summary: "Catat 2 Americano", madeThisTurn };
+      CARD_SENT.map((cardSent) => {
+        const latest = { status, summary: "Catat 2 Americano", cardSent };
         const decision = decideConfirm(latest);
 
-        return { status, madeThisTurn, answer: "run" in decision ? decision.run : decision };
+        return { status, cardSent, answer: "run" in decision ? decision.run : decision };
       }),
     );
 
     const ran = {
       status: "pending",
       summary: "Catat 2 Americano",
-      madeThisTurn: false,
+      cardSent: "before",
     } satisfies LatestDraft;
 
     expect(decideConfirm(null)).toEqual(NOTHING_OPEN);
     expect(answers).toEqual([
-      { status: "pending", madeThisTurn: true, answer: DRAFT_UNSEEN },
-      { status: "pending", madeThisTurn: false, answer: ran },
-      { status: "executing", madeThisTurn: true, answer: NOTHING_OPEN },
-      { status: "executing", madeThisTurn: false, answer: NOTHING_OPEN },
-      { status: "done", madeThisTurn: true, answer: SAVED_BEFORE },
-      { status: "done", madeThisTurn: false, answer: SAVED_BEFORE },
-      { status: "failed", madeThisTurn: true, answer: NOTHING_OPEN },
-      { status: "failed", madeThisTurn: false, answer: NOTHING_OPEN },
-      { status: "cancelled", madeThisTurn: true, answer: NOTHING_OPEN },
-      { status: "cancelled", madeThisTurn: false, answer: NOTHING_OPEN },
-      { status: "expired", madeThisTurn: true, answer: NOTHING_OPEN },
-      { status: "expired", madeThisTurn: false, answer: NOTHING_OPEN },
+      { status: "pending", cardSent: "before", answer: ran },
+      { status: "pending", cardSent: "after", answer: DRAFT_UNSEEN },
+      { status: "pending", cardSent: "never", answer: CARD_LOST },
+      { status: "executing", cardSent: "before", answer: NOTHING_OPEN },
+      { status: "executing", cardSent: "after", answer: NOTHING_OPEN },
+      { status: "executing", cardSent: "never", answer: NOTHING_OPEN },
+      { status: "done", cardSent: "before", answer: SAVED_BEFORE },
+      { status: "done", cardSent: "after", answer: SAVED_BEFORE },
+      { status: "done", cardSent: "never", answer: SAVED_BEFORE },
+      { status: "failed", cardSent: "before", answer: NOTHING_OPEN },
+      { status: "failed", cardSent: "after", answer: NOTHING_OPEN },
+      { status: "failed", cardSent: "never", answer: NOTHING_OPEN },
+      { status: "cancelled", cardSent: "before", answer: NOTHING_OPEN },
+      { status: "cancelled", cardSent: "after", answer: NOTHING_OPEN },
+      { status: "cancelled", cardSent: "never", answer: NOTHING_OPEN },
+      { status: "expired", cardSent: "before", answer: NOTHING_OPEN },
+      { status: "expired", cardSent: "after", answer: NOTHING_OPEN },
+      { status: "expired", cardSent: "never", answer: NOTHING_OPEN },
     ]);
   });
 
@@ -73,12 +88,13 @@ describe("the confirm rule every draft port shares", () => {
 });
 
 describe.if(integration)("deciding drafts", () => {
+  const OWNER = "6281200000003";
   let db: Db;
   let businessId: string;
 
   beforeAll(async () => {
     db = await freshTestDb();
-    businessId = (await createPhoneBusiness(db, demoBusiness, "6281200000003")).id;
+    businessId = (await createPhoneBusiness(db, demoBusiness, OWNER)).id;
     await seedDemoSales(db, businessId, NOW);
   }, 60_000);
 
@@ -86,7 +102,50 @@ describe.if(integration)("deciding drafts", () => {
     await db.$client.end();
   });
 
-  const portAt = (now: Date) => dbDraftPort(db, { businessId, traceId: crypto.randomUUID(), now });
+  // A turn whose earliest owner message was written at `ownerWroteAt`.
+  const portAt = (now: Date, ownerWroteAt = now) =>
+    dbDraftPort(db, { businessId, traceId: crypto.randomUUID(), now, ownerWroteAt });
+
+  // The card as agent-turn sends it: committed to the outbox with the reply, then marked by delivery.
+  async function sendCard(
+    draftId: string,
+    fate: { sentAt: Date } | "queued" | "failed" = { sentAt: NOW },
+  ) {
+    await commitTurn(db, {
+      businessId,
+      traceId: crypto.randomUUID(),
+      wamids: [],
+      history: [],
+      outbound: [
+        {
+          key: cardKey(draftId),
+          payload: {
+            type: "buttons",
+            to: OWNER,
+            body: "Catat 2 Americano",
+            buttons: [{ id: `draft:${draftId}:yes`, title: "Ya" }],
+          },
+        },
+      ],
+    });
+
+    if (fate === "queued") return;
+
+    const [card] = await db
+      .select({ id: outboundMessages.id })
+      .from(outboundMessages)
+      .where(eq(outboundMessages.idempotencyKey, cardKey(draftId)));
+
+    if (card === undefined) throw new Error("the card was not committed");
+
+    await markOutbound(
+      db,
+      card.id,
+      fate === "failed"
+        ? { status: "failed", error: "131000: Something went wrong" }
+        : { status: "sent", wamid: `wamid.card.${draftId}`, sentAt: fate.sentAt },
+    );
+  }
 
   async function draftSale(now = NOW, port = portAt(now), summary = "Catat 2 Americano") {
     const { menu } = await loadSalesDataset(db, businessId, NOW);
@@ -127,7 +186,10 @@ describe.if(integration)("deciding drafts", () => {
     expect(await portAt(NOW).confirmOpen()).toMatchObject({ status: "none" });
 
     const { draftId } = await draftSale();
-    const nextTurn = portAt(NOW);
+
+    await sendCard(draftId);
+
+    const nextTurn = portAt(NEXT);
 
     expect(await nextTurn.confirmOpen()).toMatchObject({ status: "done" });
     expect(await nextTurn.confirmOpen()).toEqual(SAVED_BEFORE);
@@ -145,11 +207,57 @@ describe.if(integration)("deciding drafts", () => {
 
   test("a ya in the turn that made the draft waits for the owner to see its card", async () => {
     const before = await chatRows();
-    const { port } = await draftSale();
+    const { port, draftId } = await draftSale();
 
     expect(await port.confirmOpen()).toEqual(DRAFT_UNSEEN);
     expect(await chatRows()).toBe(before);
-    expect(await portAt(NOW).confirmOpen()).toMatchObject({ status: "done" });
+
+    await sendCard(draftId);
+
+    expect(await portAt(NEXT).confirmOpen()).toMatchObject({ status: "done" });
+    expect(await chatRows()).toBe(before + 1);
+  });
+
+  test("a typed ya runs a draft only when its card went out before the owner wrote it", async () => {
+    const before = await chatRows();
+    const afterNow = (ms: number) => new Date(NOW.getTime() + ms);
+
+    // Typed while the turn was still answering: the card left 10 s after the "ya".
+    const raced = await draftSale();
+
+    await sendCard(raced.draftId, { sentAt: afterNow(10_000) });
+
+    expect(await portAt(NEXT, afterNow(5_000)).confirmOpen()).toEqual(DRAFT_UNSEEN);
+
+    // Still in the outbox while its send is retried.
+    const queued = await draftSale();
+
+    await sendCard(queued.draftId, "queued");
+
+    expect(await portAt(NEXT).confirmOpen()).toEqual(DRAFT_UNSEEN);
+
+    // Its turn died before the card was committed, or the send failed for good.
+    await draftSale();
+
+    expect(await portAt(NEXT).confirmOpen()).toEqual(CARD_LOST);
+
+    const failed = await draftSale();
+
+    await sendCard(failed.draftId, "failed");
+
+    expect(await portAt(NEXT).confirmOpen()).toEqual(CARD_LOST);
+
+    // Without the time the owner wrote, nothing shows the card came first.
+    const sent = await draftSale();
+
+    await sendCard(sent.draftId);
+
+    const unknownTime = dbDraftPort(db, { businessId, traceId: crypto.randomUUID(), now: NEXT });
+
+    expect(await unknownTime.confirmOpen()).toEqual(DRAFT_UNSEEN);
+    expect(await chatRows()).toBe(before);
+    expect(await statusOf(sent.draftId)).toBe("pending");
+    expect(await portAt(NEXT).confirmOpen()).toMatchObject({ status: "done" });
     expect(await chatRows()).toBe(before + 1);
   });
 
@@ -165,7 +273,10 @@ describe.if(integration)("deciding drafts", () => {
   test("asking whether the latest draft was saved reads it as it is and changes nothing", async () => {
     const before = await chatRows();
     const { draftId } = await draftSale();
-    const asker = portAt(NOW);
+
+    await sendCard(draftId);
+
+    const asker = portAt(NEXT);
 
     expect(await asker.checkLatest()).toEqual({
       status: "none",
@@ -190,7 +301,10 @@ describe.if(integration)("deciding drafts", () => {
     expect(open.replaced).toBeNull();
     expect(over.replaced).toBe("Catat 2 Americano");
     expect(await statusOf(open.draftId)).toBe("cancelled");
-    expect(await portAt(NOW).confirmOpen()).toMatchObject({ status: "done" });
+
+    await sendCard(over.draftId);
+
+    expect(await portAt(NEXT).confirmOpen()).toMatchObject({ status: "done" });
     expect((await draftSale()).replaced).toBeNull();
 
     const lapsed = new Date(NOW.getTime() + DRAFT_TTL_MS + 60_000);

@@ -53,20 +53,21 @@ function memoryDrafts() {
     create: async (request) => {
       const draftId = crypto.randomUUID();
 
-      tookOver = latest?.status === "pending" && !latest.madeThisTurn ? latest.summary : tookOver;
+      tookOver =
+        latest?.status === "pending" && latest.cardSent === "before" ? latest.summary : tookOver;
       latest = {
         request,
         draftId,
         status: "pending",
         summary: request.summary,
-        madeThisTurn: true,
+        cardSent: "after",
       };
       created.push(request);
 
       return { draftId, replaced: tookOver };
     },
     endTurn: async () =>
-      latest?.status === "pending" && latest.madeThisTurn
+      latest?.status === "pending" && latest.cardSent === "after"
         ? { draftId: latest.draftId, summary: latest.summary }
         : null,
     confirmOpen: async () => {
@@ -97,7 +98,7 @@ function memoryDrafts() {
   };
 
   const nextTurn = () => {
-    if (latest !== null) latest = { ...latest, madeThisTurn: false };
+    if (latest !== null) latest = { ...latest, cardSent: "before" };
 
     tookOver = null;
   };
