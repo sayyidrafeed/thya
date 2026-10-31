@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createWhatsAppClient, WhatsAppError } from "./client";
 import { splitText, toWhatsAppText } from "./format";
 import { inboundMessages, readContent, webhookSchema } from "./inbound";
-import { verifySignature } from "./signature";
+import { sameSecret, verifySignature } from "./signature";
 import { graph, signWebhook, textMessage, webhookBody } from "./testing";
 
 const SECRET = "app-secret";
@@ -21,6 +21,15 @@ describe("verifySignature", () => {
     expect(verifySignature(body, "sha256=00", SECRET)).toBe(false);
     expect(verifySignature(body, signed, "other-secret")).toBe(false);
     expect(verifySignature(body.replace("omzet", "laba"), signed, SECRET)).toBe(false);
+  });
+});
+
+describe("sameSecret", () => {
+  test("matches only the whole verify token", () => {
+    expect(sameSecret("verify-token", "verify-token")).toBe(true);
+
+    for (const given of [undefined, "", "verify", "verify-token-2", "VERIFY-TOKEN"])
+      expect(sameSecret(given, "verify-token")).toBe(false);
   });
 });
 

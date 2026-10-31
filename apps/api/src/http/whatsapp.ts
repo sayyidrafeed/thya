@@ -7,7 +7,7 @@ import {
   inboundMessages,
   webhookSchema,
 } from "../channels/whatsapp/inbound";
-import { verifySignature } from "../channels/whatsapp/signature";
+import { sameSecret, verifySignature } from "../channels/whatsapp/signature";
 import type { Db } from "../db/client";
 import { enqueueAgentTurn } from "../jobs";
 import { recordDeliveryStatuses, recordInbound } from "../modules/conversation";
@@ -22,7 +22,8 @@ export function whatsappWebhook(db: Db, boss: PgBoss, config: WebhookConfig) {
   return new Elysia()
     .get("/webhook/whatsapp", ({ query, status }) => {
       const ok =
-        query["hub.mode"] === "subscribe" && query["hub.verify_token"] === config.verifyToken;
+        query["hub.mode"] === "subscribe" &&
+        sameSecret(query["hub.verify_token"], config.verifyToken);
 
       if (ok) return query["hub.challenge"] ?? "";
 

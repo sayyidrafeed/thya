@@ -1,4 +1,12 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+
+// The subscription handshake's verify token, compared in constant time like the signature: `===`
+// stops at the first differing character. Hashing first gives both sides one length.
+export function sameSecret(given: string | undefined, secret: string) {
+  const digest = (value: string) => createHash("sha256").update(value, "utf8").digest();
+
+  return given !== undefined && timingSafeEqual(digest(given), digest(secret));
+}
 
 // Meta signs the exact bytes it sent (X-Hub-Signature-256: sha256=<hex>). The check runs on the raw
 // body before JSON.parse, because re-serialising parsed JSON never reproduces those bytes.
