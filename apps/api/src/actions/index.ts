@@ -145,11 +145,15 @@ export function draftCheck(latest: LatestDraft | null): DraftCheck {
 }
 
 // Safe only at job start: with one job per phone, an open draft without a card is a dead run's.
-export async function undoDeadRun(db: Db, { businessId, now }: { businessId: string; now: Date }) {
-  const open = await openDraft(db, businessId, now);
+export async function undoDeadRun(db: Db, at: { businessId: string; now: Date }) {
+  const open = await openDraft(db, at.businessId, at.now);
 
-  if (open !== null && (await outboundState(db, cardKey(open.id))) === null)
-    await undoTurnDrafts(db, { businessId, traceId: open.traceId });
+  if (open === null || (await outboundState(db, cardKey(open.id))) !== null) return;
+
+  await undoTurnDrafts(db, { businessId: at.businessId, traceId: open.traceId });
+
+  // A dead job drafts once per screenshot, each its own trace, and undoing one reopens the one before.
+  await undoDeadRun(db, at);
 }
 
 // `sheets`: Google access for sheet.append; null where the deployment has no service account.

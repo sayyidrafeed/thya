@@ -287,6 +287,22 @@ describe.if(integration)("deciding drafts", () => {
     expect(await chatRows()).toBe(before + 1);
   });
 
+  test("a dead job that drafted under two traces is undone back to the owner's card", async () => {
+    const seen = await draftSale();
+
+    await sendCard(seen.draftId);
+
+    // Two screenshots in one batch: each drafts under its own trace, the second over the first.
+    const first = await draftSale(NEXT, portAt(NEXT), "Catat 1 Kopi Tubruk");
+    const second = await draftSale(NEXT, portAt(NEXT), "Catat 1 Cappuccino");
+
+    await undoDeadRun(db, { businessId, now: NEXT });
+
+    expect(await statusOf(first.draftId)).toBeUndefined();
+    expect(await statusOf(second.draftId)).toBeUndefined();
+    expect(await statusOf(seen.draftId)).toBe("pending");
+  });
+
   test("a ya retried after its run died hears the save that run made, not a lost card", async () => {
     const before = await chatRows();
     const seen = await draftSale();
