@@ -4,8 +4,9 @@ import { drafts } from "../../db/schema";
 
 // Decision Q1 (widened by business-features-plan §4.3): pending → executing → done | failed, or
 // pending → cancelled | expired. Every transition is an UPDATE guarded by the current status, so
-// two taps on "Ya" start one execution. The one way back is undoTurnDrafts, for a run that never
-// committed its card.
+// two taps on "Ya" start one execution.
+
+// The one way back is undoTurnDrafts, for a run that never committed its card.
 
 // Long enough to answer after serving a rush, short enough that a stray "ya" tomorrow does nothing.
 export const DRAFT_TTL_MS = 6 * 60 * 60 * 1000;

@@ -247,23 +247,25 @@ describe.if(integration)("deciding drafts", () => {
     expect(await chatRows()).toBe(before);
   });
 
-  test("a card whose send failed reads as lost, and the ya that hears so closes its draft", async () => {
+  test("a lost card stays lost to every ya, and saying it again replaces nothing", async () => {
     const before = await chatRows();
-    const failed = await draftSale();
+    const lost = await draftSale();
 
-    await sendCard(failed.draftId, "failed");
+    await sendCard(lost.draftId, "failed");
 
     const nextTurn = portAt(NEXT);
 
+    // A retried attempt asks again and must hear the same answer.
+    expect(await nextTurn.confirmOpen()).toEqual(CARD_LOST);
+    expect(await nextTurn.confirmOpen()).toEqual(CARD_LOST);
     expect(await nextTurn.checkLatest()).toMatchObject({
       status: "none",
       message: expect.stringContaining("tidak sampai"),
     });
-    expect(await nextTurn.confirmOpen()).toEqual(CARD_LOST);
-    expect(await statusOf(failed.draftId)).toBe("cancelled");
 
-    // Saying it again, as CARD_LOST asks, replaces no card the owner had.
+    // Saying it again, as both answers ask, replaces no card the owner had.
     expect((await draftSale(NEXT)).replaced).toBeNull();
+    expect(await statusOf(lost.draftId)).toBe("cancelled");
     expect(await chatRows()).toBe(before);
   });
 
@@ -307,7 +309,7 @@ describe.if(integration)("deciding drafts", () => {
     expect(await statusOf(seen.draftId)).toBe("pending");
   });
 
-  test("a ya retried after its run died hears the save that run made", async () => {
+  test("a ya retried after its run died finds the save that run made, not its undone draft", async () => {
     const before = await chatRows();
     const seen = await draftSale();
 

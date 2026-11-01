@@ -488,8 +488,7 @@ describe.if(integration)("drafts over WhatsApp", () => {
     const ago = (ms: number) => new Date(answeredAt.getTime() - ms);
     const typed = (text: string) => textMessage(`wamid.t${++wamid}`, text, OWNER);
 
-    // The owner asks, then types "ya" 5 s later while that turn is still answering; the card it
-    // drafts goes out at `answeredAt`, so the next turn answers the "ya".
+    // "ya" is typed 5 s after the question, while its card is still on the way out (`answeredAt`).
     const asked = await send(
       typed("tadi laku 2 americano"),
       recordTwoAmericano,
@@ -506,7 +505,9 @@ describe.if(integration)("drafts over WhatsApp", () => {
       ago(5_000),
     );
 
-    expect(JSON.stringify(early.model.doGenerateCalls[1]?.prompt)).toContain(DRAFT_UNSEEN.message);
+    expect(JSON.stringify(early.model.doGenerateCalls[1]?.prompt.at(-1))).toContain(
+      DRAFT_UNSEEN.message,
+    );
     expect(await statusOf(cardDraft)).toBe("pending");
     expect(await chatRows()).toBe(before);
 
@@ -572,7 +573,9 @@ describe.if(integration)("drafts over WhatsApp", () => {
       { text: "Baik, Kak." },
     ]);
 
-    expect(JSON.stringify(batch.model.doGenerateCalls[1]?.prompt)).toContain(DRAFT_UNSEEN.message);
+    expect(JSON.stringify(batch.model.doGenerateCalls[1]?.prompt.at(-1))).toContain(
+      DRAFT_UNSEEN.message,
+    );
     expect(await statusOf(cardDraft)).toBe("pending");
     expect(await chatRows()).toBe(before);
   });

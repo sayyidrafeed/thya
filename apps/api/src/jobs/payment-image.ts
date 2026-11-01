@@ -1,4 +1,5 @@
 import type { LanguageModel } from "ai";
+import { createCardDraft } from "../actions";
 import type { DraftRequest } from "../actions/kinds";
 import { REPLACED_LINE, type TurnDraft } from "../agent";
 import { WhatsAppError, type WhatsAppClient } from "../channels/whatsapp/client";
@@ -9,7 +10,6 @@ import {
   planChannelImport,
   storedChannelSales,
 } from "../modules/channel-sales";
-import { createDraft } from "../modules/drafts";
 import {
   EXTRACTION_REPLIES,
   extractPayments,
@@ -64,7 +64,7 @@ async function cardFor(
   request: DraftRequest,
   note: string,
 ): Promise<PaymentImageResult> {
-  const { draft, replaced } = await createDraft(deps.db, { ...at, ...request });
+  const { draft, replaced } = await createCardDraft(deps.db, { ...at, ...request });
 
   return {
     reply: replaced === null ? READ_CARD : `${READ_CARD}\n${REPLACED_LINE}`,

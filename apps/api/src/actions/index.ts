@@ -17,6 +17,7 @@ import {
   undoTurnDrafts,
   type Claim,
   type Draft,
+  type NewDraft,
 } from "../modules/drafts";
 import { formatRupiah } from "../sales/format";
 import { DELIVERY_CHANNEL_NAMES, jakartaDate } from "../sales/report";
@@ -142,6 +143,14 @@ export function draftCheck(latest: LatestDraft | null): DraftCheck {
   const lost = latest.status === "pending" && latest.card === "lost";
 
   return { ...(lost ? LOST_CHECK : LATEST_STATE[latest.status]), summary: latest.summary };
+}
+
+// A draft taken over whose card failed to send never reached the owner, so it is not "replaced".
+export async function createCardDraft(db: Db, draft: NewDraft) {
+  const created = await createDraft(db, draft);
+  const card = created.replaced && (await outboundState(db, cardKey(created.replaced.id)));
+
+  return card?.status === "failed" ? { ...created, replaced: null } : created;
 }
 
 // Safe only at job start: with one job per phone, an open draft without a card is a dead run's.
@@ -286,7 +295,7 @@ export function dbDraftPort(
 
   return {
     create: async ({ kind, args, summary }) => {
-      const { draft, replaced } = await createDraft(db, {
+      const { draft, replaced } = await createCardDraft(db, {
         businessId,
         kind,
         args,
@@ -301,17 +310,11 @@ export function dbDraftPort(
     },
 
     confirmOpen: async () => {
-      const latest = await latestWithCard();
-      const decision = decideConfirm(latest);
+      const decision = decideConfirm(await latestWithCard());
 
-      if ("run" in decision)
-        return runDraft(db, { businessId, draftId: decision.run.id, now, sheets });
-
-      // The owner is asked to say it again, which must not read as replacing this lost card.
-      if (decision === CARD_LOST && latest !== null)
-        await cancelDraft(db, { businessId, draftId: latest.id, now });
-
-      return decision;
+      return "run" in decision
+        ? runDraft(db, { businessId, draftId: decision.run.id, now, sheets })
+        : decision;
     },
 
     checkLatest: async () => draftCheck(await latestWithCard()),
