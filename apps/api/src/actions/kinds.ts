@@ -117,8 +117,7 @@ export const DRAFT_OUTCOMES = ["done", "already_done", "failed", "none"] as cons
 // The outcome the owner reads. `message` is written by code, never by the model.
 export type DraftOutcome = { status: (typeof DRAFT_OUTCOMES)[number]; message: string };
 
-// Decision Q1: the owner sees a card before it runs. This turn's card goes out with this reply, and
-// one sent while they were typing reached them only after the words being answered.
+// Decision Q1: the owner sees a card before it runs; this one went out with or after their words.
 export const DRAFT_UNSEEN: DraftOutcome = {
   status: "none",
   message: "Ringkasannya baru Thya kirim, Kak. Cek dulu, lalu jawab ya kalau sudah benar.",

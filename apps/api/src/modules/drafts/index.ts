@@ -5,7 +5,7 @@ import { drafts } from "../../db/schema";
 // Decision Q1 (widened by business-features-plan §4.3): pending → executing → done | failed, or
 // pending → cancelled | expired. Every transition is an UPDATE guarded by the current status, so
 // two taps on "Ya" start one execution. The one way back is undoTurnDrafts, for a run that never
-// sent its card.
+// committed its card.
 
 // Long enough to answer after serving a rush, short enough that a stray "ya" tomorrow does nothing.
 export const DRAFT_TTL_MS = 6 * 60 * 60 * 1000;
@@ -45,7 +45,7 @@ export async function createDraft(
 
     if (!row) throw new Error("draft insert returned no row");
 
-    // `replacedBy` lets undoTurnDrafts reopen the card if this draft's run never answers.
+    // `replacedBy` lets undoTurnDrafts reopen the card if this draft's run never commits its card.
     const cancelled = await tx
       .update(drafts)
       .set({ status: "cancelled", decidedAt: draft.now, outcome: { replacedBy: row.id } })
@@ -170,8 +170,30 @@ export async function cancelDraft(
   return cancelled.length > 0;
 }
 
-// A run that never committed its card showed none of its drafts (Q1), so they go, and any open
-// card one of them took over is open again.
+// Drafts of a turn that sent no card for them (all if it failed, else all but `keep`) never run (Q1).
+export async function cancelTurnDrafts(
+  db: Db,
+  {
+    businessId,
+    traceId,
+    now,
+    keep,
+  }: { businessId: string; traceId: string; now: Date; keep?: string },
+) {
+  await db
+    .update(drafts)
+    .set({ status: "cancelled", decidedAt: now })
+    .where(
+      and(
+        eq(drafts.businessId, businessId),
+        eq(drafts.traceId, traceId),
+        eq(drafts.status, "pending"),
+        keep === undefined ? undefined : ne(drafts.id, keep),
+      ),
+    );
+}
+
+// A run that never committed its card showed no drafts: delete them, reopen what they took over.
 export async function undoTurnDrafts(
   db: Db,
   { businessId, traceId }: { businessId: string; traceId: string },
@@ -226,17 +248,7 @@ export async function keepTurnDraft(
 
   if (kept === undefined) return null;
 
-  await db
-    .update(drafts)
-    .set({ status: "cancelled", decidedAt: now })
-    .where(
-      and(
-        eq(drafts.businessId, businessId),
-        eq(drafts.traceId, traceId),
-        eq(drafts.status, "pending"),
-        ne(drafts.id, kept.id),
-      ),
-    );
+  await cancelTurnDrafts(db, { businessId, traceId, now, keep: kept.id });
 
   return kept;
 }

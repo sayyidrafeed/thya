@@ -247,7 +247,7 @@ describe.if(integration)("deciding drafts", () => {
     expect(await chatRows()).toBe(before);
   });
 
-  test("a card whose send failed reads as lost to a typed ya and to a status question", async () => {
+  test("a card whose send failed reads as lost, and the ya that hears so closes its draft", async () => {
     const before = await chatRows();
     const failed = await draftSale();
 
@@ -255,11 +255,15 @@ describe.if(integration)("deciding drafts", () => {
 
     const nextTurn = portAt(NEXT);
 
-    expect(await nextTurn.confirmOpen()).toEqual(CARD_LOST);
     expect(await nextTurn.checkLatest()).toMatchObject({
       status: "none",
       message: expect.stringContaining("tidak sampai"),
     });
+    expect(await nextTurn.confirmOpen()).toEqual(CARD_LOST);
+    expect(await statusOf(failed.draftId)).toBe("cancelled");
+
+    // Saying it again, as CARD_LOST asks, replaces no card the owner had.
+    expect((await draftSale(NEXT)).replaced).toBeNull();
     expect(await chatRows()).toBe(before);
   });
 
@@ -303,7 +307,7 @@ describe.if(integration)("deciding drafts", () => {
     expect(await statusOf(seen.draftId)).toBe("pending");
   });
 
-  test("a ya retried after its run died hears the save that run made, not a lost card", async () => {
+  test("a ya retried after its run died hears the save that run made", async () => {
     const before = await chatRows();
     const seen = await draftSale();
 

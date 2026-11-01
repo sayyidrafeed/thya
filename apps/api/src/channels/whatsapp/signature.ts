@@ -1,7 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
-// The subscription handshake's verify token, compared in constant time like the signature: `===`
-// stops at the first differing character. Hashing first gives both sides one length.
+// The handshake's verify token, compared in constant time; hashing gives both sides one length.
 export function sameSecret(given: string | undefined, secret: string) {
   const digest = (value: string) => createHash("sha256").update(value, "utf8").digest();
 

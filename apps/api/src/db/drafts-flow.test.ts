@@ -7,7 +7,7 @@ import { scriptedModel, type ScriptStep, type ToolStep } from "../agent/testing"
 import { createWhatsAppClient } from "../channels/whatsapp/client";
 import type { WebhookMessage } from "../channels/whatsapp/inbound";
 import { fakeGraph, textMessage } from "../channels/whatsapp/testing";
-import { handleAgentTurn } from "../jobs/agent-turn";
+import { handleAgentTurn, REPLIES } from "../jobs/agent-turn";
 import { createPhoneBusiness } from "../modules/business";
 import { recordInbound } from "../modules/conversation";
 import { createDraft } from "../modules/drafts";
@@ -501,12 +501,12 @@ describe.if(integration)("drafts over WhatsApp", () => {
 
     const early = await send(
       typed("ya"),
-      [{ tool: "confirmDraft", input: {} }, { text: DRAFT_UNSEEN.message }],
+      [{ tool: "confirmDraft", input: {} }, { text: "Baik, Kak." }],
       later(),
       ago(5_000),
     );
 
-    expect(early.sent.map((body) => body.text.body)).toEqual([DRAFT_UNSEEN.message]);
+    expect(JSON.stringify(early.model.doGenerateCalls[1]?.prompt)).toContain(DRAFT_UNSEEN.message);
     expect(await statusOf(cardDraft)).toBe("pending");
     expect(await chatRows()).toBe(before);
 
@@ -543,5 +543,52 @@ describe.if(integration)("drafts over WhatsApp", () => {
     ]);
     expect(await statusOf(dead.draft.id)).toBeUndefined();
     expect(await chatRows()).toBe(before + 1);
+  });
+
+  test("a batch counts from its earliest message, so a ya written before the card went out waits", async () => {
+    const before = await chatRows();
+    const answeredAt = later();
+    const ago = (ms: number) => new Date(answeredAt.getTime() - ms);
+    const typed = (text: string) => textMessage(`wamid.t${++wamid}`, text, OWNER);
+
+    const asked = await send(
+      typed("tadi laku 2 americano"),
+      recordTwoAmericano,
+      answeredAt,
+      ago(10_000),
+    );
+
+    const { cardDraft } = delivered(asked.sent);
+
+    // "ya" was written 5 s before the card went out, and the batch's next message after it.
+    const early = typed("ya");
+
+    await recordInbound(db, [
+      { wamid: early.id, phone: OWNER, type: early.type, payload: early, receivedAt: ago(5_000) },
+    ]);
+
+    const batch = await send(typed("oke"), [
+      { tool: "confirmDraft", input: {} },
+      { text: "Baik, Kak." },
+    ]);
+
+    expect(JSON.stringify(batch.model.doGenerateCalls[1]?.prompt)).toContain(DRAFT_UNSEEN.message);
+    expect(await statusOf(cardDraft)).toBe("pending");
+    expect(await chatRows()).toBe(before);
+  });
+
+  test("a turn that fails after a correction keeps the corrected card closed for a later iya", async () => {
+    const before = await chatRows();
+    const { cardDraft } = delivered((await say("tadi laku 2 americano", recordTwoAmericano)).sent);
+
+    // The correction drafts over the card, then the model call after the tool fails.
+    const failed = await say("eh bukan 2, 3 americano", [sale("americano", 3)]);
+
+    expect(failed.sent.map((body) => body.text.body)).toEqual([REPLIES.failed]);
+
+    await say("iya", [{ tool: "confirmDraft", input: {} }, { text: "Baik, Kak." }]);
+
+    expect(await statusOf(cardDraft)).toBe("cancelled");
+    expect(await chatRows()).toBe(before);
   });
 });

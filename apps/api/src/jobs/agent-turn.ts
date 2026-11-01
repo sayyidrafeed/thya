@@ -18,7 +18,7 @@ import { COMPACTION_THRESHOLD_CHARS } from "./compaction";
 import { readPaymentImage } from "./payment-image";
 import type { Db } from "../db/client";
 import { findBusinessByPhone, type Business } from "../modules/business";
-import { undoTurnDrafts } from "../modules/drafts";
+import { cancelTurnDrafts } from "../modules/drafts";
 import {
   commitTurn,
   countInboundSince,
@@ -400,7 +400,8 @@ async function answer(
       const message = error instanceof Error ? error.message : String(error);
       const durationMs = Date.now() - started;
 
-      await undoTurnDrafts(deps.db, { businessId: business.id, traceId });
+      // Cancelled, not undone: the batch is never replayed, so the card it took over stays closed.
+      await cancelTurnDrafts(deps.db, { businessId: business.id, traceId, now: deps.now() });
 
       await recordFailedTurn(deps.db, {
         traceId,

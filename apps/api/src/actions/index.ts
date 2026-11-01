@@ -301,11 +301,17 @@ export function dbDraftPort(
     },
 
     confirmOpen: async () => {
-      const decision = decideConfirm(await latestWithCard());
+      const latest = await latestWithCard();
+      const decision = decideConfirm(latest);
 
-      return "run" in decision
-        ? runDraft(db, { businessId, draftId: decision.run.id, now, sheets })
-        : decision;
+      if ("run" in decision)
+        return runDraft(db, { businessId, draftId: decision.run.id, now, sheets });
+
+      // The owner is asked to say it again, which must not read as replacing this lost card.
+      if (decision === CARD_LOST && latest !== null)
+        await cancelDraft(db, { businessId, draftId: latest.id, now });
+
+      return decision;
     },
 
     checkLatest: async () => draftCheck(await latestWithCard()),
