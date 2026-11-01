@@ -1,10 +1,11 @@
-import { and, desc, eq, gt, ne } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { drafts } from "../../db/schema";
 
 // Decision Q1 (widened by business-features-plan §4.3): pending → executing → done | failed, or
 // pending → cancelled | expired. Every transition is an UPDATE guarded by the current status, so
-// two taps on "Ya" start one execution.
+// two taps on "Ya" start one execution. The one way back is undoTurnDrafts, for a run that never
+// sent its card.
 
 // Long enough to answer after serving a rush, short enough that a stray "ya" tomorrow does nothing.
 export const DRAFT_TTL_MS = 6 * 60 * 60 * 1000;
@@ -30,12 +31,6 @@ export async function createDraft(
   draft: NewDraft,
 ): Promise<{ draft: Draft; replaced: Draft | null }> {
   return db.transaction(async (tx) => {
-    const cancelled = await tx
-      .update(drafts)
-      .set({ status: "cancelled", decidedAt: draft.now })
-      .where(and(eq(drafts.businessId, draft.businessId), eq(drafts.status, "pending")))
-      .returning();
-
     const [row] = await tx
       .insert(drafts)
       .values({
@@ -49,6 +44,19 @@ export async function createDraft(
       .returning();
 
     if (!row) throw new Error("draft insert returned no row");
+
+    // `replacedBy` lets undoTurnDrafts reopen the card if this draft's run never answers.
+    const cancelled = await tx
+      .update(drafts)
+      .set({ status: "cancelled", decidedAt: draft.now, outcome: { replacedBy: row.id } })
+      .where(
+        and(
+          eq(drafts.businessId, draft.businessId),
+          eq(drafts.status, "pending"),
+          ne(drafts.id, row.id),
+        ),
+      )
+      .returning();
 
     // A lapsed draft took nothing from the owner, and neither did this turn's own: no card went out.
     const replaced = cancelled.find(
@@ -162,27 +170,40 @@ export async function cancelDraft(
   return cancelled.length > 0;
 }
 
-// Drafts of a turn that sent no card for them (all if it failed, else all but `keep`) never run (Q1).
-export async function cancelTurnDrafts(
+// A run that never committed its card showed none of its drafts (Q1), so they go, and any open
+// card one of them took over is open again.
+export async function undoTurnDrafts(
   db: Db,
-  {
-    businessId,
-    traceId,
-    now,
-    keep,
-  }: { businessId: string; traceId: string; now: Date; keep?: string },
+  { businessId, traceId }: { businessId: string; traceId: string },
 ) {
-  await db
-    .update(drafts)
-    .set({ status: "cancelled", decidedAt: now })
-    .where(
-      and(
-        eq(drafts.businessId, businessId),
-        eq(drafts.traceId, traceId),
-        eq(drafts.status, "pending"),
-        keep === undefined ? undefined : ne(drafts.id, keep),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    const undone = await tx
+      .delete(drafts)
+      .where(
+        and(
+          eq(drafts.businessId, businessId),
+          eq(drafts.traceId, traceId),
+          inArray(drafts.status, ["pending", "cancelled"]),
+        ),
+      )
+      .returning({ id: drafts.id });
+
+    if (undone.length === 0) return;
+
+    await tx
+      .update(drafts)
+      .set({ status: "pending", decidedAt: null, outcome: null })
+      .where(
+        and(
+          eq(drafts.businessId, businessId),
+          eq(drafts.status, "cancelled"),
+          inArray(
+            sql`${drafts.outcome}->>'replacedBy'`,
+            undone.map((draft) => draft.id),
+          ),
+        ),
+      );
+  });
 }
 
 // An answered turn sends one card (Q1), for its newest open draft; others it made had no card.
@@ -205,7 +226,17 @@ export async function keepTurnDraft(
 
   if (kept === undefined) return null;
 
-  await cancelTurnDrafts(db, { businessId, traceId, now, keep: kept.id });
+  await db
+    .update(drafts)
+    .set({ status: "cancelled", decidedAt: now })
+    .where(
+      and(
+        eq(drafts.businessId, businessId),
+        eq(drafts.traceId, traceId),
+        eq(drafts.status, "pending"),
+        ne(drafts.id, kept.id),
+      ),
+    );
 
   return kept;
 }

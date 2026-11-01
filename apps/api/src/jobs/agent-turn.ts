@@ -1,5 +1,12 @@
 import type { LanguageModel, ModelMessage } from "ai";
-import { attachmentPort, cancelOpenDraft, cardKey, dbDraftPort, runDraft } from "../actions";
+import {
+  attachmentPort,
+  cancelOpenDraft,
+  cardKey,
+  dbDraftPort,
+  runDraft,
+  undoDeadRun,
+} from "../actions";
 import { renderSummary, runTurn, type TurnDraft, type TurnResult } from "../agent";
 import { BUTTON_TITLE_LIMIT, CAPTION_LIMIT, TEXT_LIMIT } from "../channels/whatsapp/client";
 import { deliverPending, type Delivery } from "../channels/whatsapp/deliver";
@@ -11,7 +18,7 @@ import { COMPACTION_THRESHOLD_CHARS } from "./compaction";
 import { readPaymentImage } from "./payment-image";
 import type { Db } from "../db/client";
 import { findBusinessByPhone, type Business } from "../modules/business";
-import { cancelTurnDrafts } from "../modules/drafts";
+import { undoTurnDrafts } from "../modules/drafts";
 import {
   commitTurn,
   countInboundSince,
@@ -260,11 +267,7 @@ async function turnMemory(db: Db, businessId: string, now: Date) {
 async function runAgent(
   deps: AgentTurnDeps,
   business: Business,
-  {
-    texts,
-    tainted,
-    ownerWroteAt,
-  }: { texts: string[]; tainted: boolean; ownerWroteAt: Date | undefined },
+  { texts, tainted, ownerWroteAt }: { texts: string[]; tainted: boolean; ownerWroteAt: Date },
   traceId: string,
 ) {
   const { db } = deps;
@@ -368,7 +371,7 @@ async function answer(
     wamids: string[];
     texts: string[];
     tainted: boolean;
-    ownerWroteAt: Date | undefined;
+    ownerWroteAt: Date;
   },
 ) {
   const traceId = newTraceId();
@@ -397,7 +400,7 @@ async function answer(
       const message = error instanceof Error ? error.message : String(error);
       const durationMs = Date.now() - started;
 
-      await cancelTurnDrafts(deps.db, { businessId: business.id, traceId, now: deps.now() });
+      await undoTurnDrafts(deps.db, { businessId: business.id, traceId });
 
       await recordFailedTurn(deps.db, {
         traceId,
@@ -500,8 +503,9 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
     });
 
   const current = rows.filter((row) => !stale.includes(row));
+  const [oldest] = current;
 
-  if (current.length === 0) {
+  if (oldest === undefined) {
     await deliverPending(delivery, phone);
 
     return;
@@ -546,6 +550,9 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
   // Read receipt + typing indicator are courtesy; a failure must not cost the reply.
   if (lastWamid) await delivery.client.markRead(lastWamid).catch(() => {});
 
+  // A dead run showed the owner none of its drafts, so they go before a tap or the model reads them.
+  await undoDeadRun(db, { businessId: business.id, now });
+
   const batch = await readBatch(deps, business, current);
 
   if (batch.texts.length === 0 && batch.answered.length === 0)
@@ -571,7 +578,7 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
       wamids,
       texts: batch.texts,
       tainted: batch.tainted,
-      ownerWroteAt: current[0]?.receivedAt,
+      ownerWroteAt: oldest.receivedAt,
     });
 
   await deliverPending(delivery, phone);

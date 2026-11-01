@@ -14,6 +14,7 @@ import {
   keepTurnDraft,
   latestDraft,
   openDraft,
+  undoTurnDrafts,
   type Claim,
   type Draft,
 } from "../modules/drafts";
@@ -72,7 +73,7 @@ export const SAVED_BEFORE: DraftOutcome = {
   message: "Yang tadi sudah tersimpan, Kak. Belum ada yang baru untuk dikonfirmasi.",
 };
 
-// The card never reached the owner (its turn died before sending it, or the send failed).
+// The card's send failed for good, so the owner never had it.
 export const CARD_LOST: DraftOutcome = {
   status: "none",
   message:
@@ -91,51 +92,64 @@ const LATEST_STATE: Record<Draft["status"], Omit<DraftCheck, "summary">> = {
   expired: { status: "none", message: NOT_RUN.expired },
 };
 
+const LOST_CHECK: Omit<DraftCheck, "summary"> = {
+  status: "none",
+  message:
+    "Yang tadi belum tersimpan, Kak. Ringkasannya tidak sampai ke Kakak, jadi sebutkan lagi ya, nanti Thya siapkan ulang.",
+};
+
 const NOTHING_RECENT = `Dalam ${DRAFT_TTL_MS / 3_600_000} jam terakhir belum ada catatan yang Thya siapkan, Kak.`;
 
-// When the draft's card went out, against the owner's words this turn answers: "before" them, so
-// they could read it first; "after" them (this turn's own card, or one sent while they typed); or
-// "never" (a turn that died before sending it, or a failed send).
-export type CardSent = "before" | "after" | "never";
+// Whether the owner had the card before writing; "unseen" includes one still on its way.
+export type CardView = "seen" | "unseen" | "lost";
 
 // The latest draft in the confirmation window, as a typed "ya" or a status question finds it.
-export type LatestDraft = Pick<Draft, "status" | "summary"> & { cardSent: CardSent };
+export type LatestDraft = Pick<Draft, "status" | "summary"> & { card: CardView };
 
 // The outbox key of a draft's card, which carries its Ya/Ubah/Batal buttons.
 export const cardKey = (draftId: string) => `card:${draftId}`;
 
-// One rule for every DraftPort: a typed "ya" runs only a card the owner had before writing it, and
-// a saved one is said so.
+// One rule for every DraftPort: a typed "ya" runs only a card the owner had before writing it.
 export function decideConfirm<T extends LatestDraft>(latest: T | null): DraftOutcome | { run: T } {
   if (latest?.status === "done") return SAVED_BEFORE;
 
   if (latest?.status !== "pending") return NOTHING_OPEN;
 
-  if (latest.cardSent === "never") return CARD_LOST;
+  if (latest.card === "lost") return CARD_LOST;
 
-  return latest.cardSent === "before" ? { run: latest } : DRAFT_UNSEEN;
+  return latest.card === "seen" ? { run: latest } : DRAFT_UNSEEN;
 }
 
-async function cardSent(
+async function cardView(
   db: Db,
   draft: Draft,
-  turn: { traceId: string; ownerWroteAt: Date | undefined },
-): Promise<CardSent> {
-  if (draft.traceId === turn.traceId) return "after";
+  turn: { traceId: string; ownerWroteAt: Date },
+): Promise<CardView> {
+  if (draft.traceId === turn.traceId) return "unseen";
 
   const card = await outboundState(db, cardKey(draft.id));
 
-  if (card === null || card.status === "failed") return "never";
+  if (card?.status === "failed") return "lost";
 
-  return card.sentAt !== null && turn.ownerWroteAt !== undefined && card.sentAt < turn.ownerWroteAt
-    ? "before"
-    : "after";
+  return card !== null && card.sentAt !== null && card.sentAt < turn.ownerWroteAt
+    ? "seen"
+    : "unseen";
 }
 
-export function draftCheck(latest: Pick<Draft, "status" | "summary"> | null): DraftCheck {
-  return latest === null
-    ? { status: "none", message: NOTHING_RECENT, summary: null }
-    : { ...LATEST_STATE[latest.status], summary: latest.summary };
+export function draftCheck(latest: LatestDraft | null): DraftCheck {
+  if (latest === null) return { status: "none", message: NOTHING_RECENT, summary: null };
+
+  const lost = latest.status === "pending" && latest.card === "lost";
+
+  return { ...(lost ? LOST_CHECK : LATEST_STATE[latest.status]), summary: latest.summary };
+}
+
+// Safe only at job start: with one job per phone, an open draft without a card is a dead run's.
+export async function undoDeadRun(db: Db, { businessId, now }: { businessId: string; now: Date }) {
+  const open = await openDraft(db, businessId, now);
+
+  if (open !== null && (await outboundState(db, cardKey(open.id))) === null)
+    await undoTurnDrafts(db, { businessId, traceId: open.traceId });
 }
 
 // `sheets`: Google access for sheet.append; null where the deployment has no service account.
@@ -240,8 +254,7 @@ export async function cancelOpenDraft(
     : { status: "none", message: NOT_RUN.cancelled };
 }
 
-// `ownerWroteAt`: when the owner wrote the earliest message this turn answers. Without it no typed
-// "ya" runs anything, since no card can be shown to have come first.
+// `ownerWroteAt`: when the owner wrote the earliest message this turn answers.
 export function dbDraftPort(
   db: Db,
   {
@@ -255,11 +268,17 @@ export function dbDraftPort(
     traceId: string;
     now: Date;
     sheets?: SheetsAccess | null;
-    ownerWroteAt?: Date;
+    ownerWroteAt: Date;
   },
 ): DraftPort {
   // A retry redrafts over this turn's own draft, yet the owner's card it took over is still gone.
   let tookOver: string | null = null;
+
+  const latestWithCard = async () => {
+    const latest = await latestDraft(db, businessId, now);
+
+    return latest && { ...latest, card: await cardView(db, latest, { traceId, ownerWroteAt }) };
+  };
 
   return {
     create: async ({ kind, args, summary }) => {
@@ -278,18 +297,14 @@ export function dbDraftPort(
     },
 
     confirmOpen: async () => {
-      const latest = await latestDraft(db, businessId, now);
-
-      const decision = decideConfirm(
-        latest && { ...latest, cardSent: await cardSent(db, latest, { traceId, ownerWroteAt }) },
-      );
+      const decision = decideConfirm(await latestWithCard());
 
       return "run" in decision
         ? runDraft(db, { businessId, draftId: decision.run.id, now, sheets })
         : decision;
     },
 
-    checkLatest: async () => draftCheck(await latestDraft(db, businessId, now)),
+    checkLatest: async () => draftCheck(await latestWithCard()),
 
     endTurn: async () => {
       const kept = await keepTurnDraft(db, { businessId, traceId, now });

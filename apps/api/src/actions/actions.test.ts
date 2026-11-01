@@ -17,7 +17,8 @@ import {
   NOTHING_OPEN,
   runDraft,
   SAVED_BEFORE,
-  type CardSent,
+  undoDeadRun,
+  type CardView,
   type LatestDraft,
 } from ".";
 import { DRAFT_UNSEEN } from "./kinds";
@@ -27,51 +28,52 @@ const NOW = new Date("2026-10-25T14:00:00+07:00");
 // The owner's next message, a minute after the card went out with the reply.
 const NEXT = new Date(NOW.getTime() + 60_000);
 
-const CARD_SENT = ["before", "after", "never"] as const satisfies readonly CardSent[];
+const CARD_VIEWS = ["seen", "unseen", "lost"] as const satisfies readonly CardView[];
 
 describe("the confirm rule every draft port shares", () => {
   test("a typed ya runs only an open draft whose card the owner had first; a saved one is said so", () => {
     const answers = draftStatus.enumValues.flatMap((status) =>
-      CARD_SENT.map((cardSent) => {
-        const latest = { status, summary: "Catat 2 Americano", cardSent };
+      CARD_VIEWS.map((card) => {
+        const latest = { status, summary: "Catat 2 Americano", card };
         const decision = decideConfirm(latest);
 
-        return { status, cardSent, answer: "run" in decision ? decision.run : decision };
+        return { status, card, answer: "run" in decision ? decision.run : decision };
       }),
     );
 
     const ran = {
       status: "pending",
       summary: "Catat 2 Americano",
-      cardSent: "before",
+      card: "seen",
     } satisfies LatestDraft;
 
     expect(decideConfirm(null)).toEqual(NOTHING_OPEN);
     expect(answers).toEqual([
-      { status: "pending", cardSent: "before", answer: ran },
-      { status: "pending", cardSent: "after", answer: DRAFT_UNSEEN },
-      { status: "pending", cardSent: "never", answer: CARD_LOST },
-      { status: "executing", cardSent: "before", answer: NOTHING_OPEN },
-      { status: "executing", cardSent: "after", answer: NOTHING_OPEN },
-      { status: "executing", cardSent: "never", answer: NOTHING_OPEN },
-      { status: "done", cardSent: "before", answer: SAVED_BEFORE },
-      { status: "done", cardSent: "after", answer: SAVED_BEFORE },
-      { status: "done", cardSent: "never", answer: SAVED_BEFORE },
-      { status: "failed", cardSent: "before", answer: NOTHING_OPEN },
-      { status: "failed", cardSent: "after", answer: NOTHING_OPEN },
-      { status: "failed", cardSent: "never", answer: NOTHING_OPEN },
-      { status: "cancelled", cardSent: "before", answer: NOTHING_OPEN },
-      { status: "cancelled", cardSent: "after", answer: NOTHING_OPEN },
-      { status: "cancelled", cardSent: "never", answer: NOTHING_OPEN },
-      { status: "expired", cardSent: "before", answer: NOTHING_OPEN },
-      { status: "expired", cardSent: "after", answer: NOTHING_OPEN },
-      { status: "expired", cardSent: "never", answer: NOTHING_OPEN },
+      { status: "pending", card: "seen", answer: ran },
+      { status: "pending", card: "unseen", answer: DRAFT_UNSEEN },
+      { status: "pending", card: "lost", answer: CARD_LOST },
+      { status: "executing", card: "seen", answer: NOTHING_OPEN },
+      { status: "executing", card: "unseen", answer: NOTHING_OPEN },
+      { status: "executing", card: "lost", answer: NOTHING_OPEN },
+      { status: "done", card: "seen", answer: SAVED_BEFORE },
+      { status: "done", card: "unseen", answer: SAVED_BEFORE },
+      { status: "done", card: "lost", answer: SAVED_BEFORE },
+      { status: "failed", card: "seen", answer: NOTHING_OPEN },
+      { status: "failed", card: "unseen", answer: NOTHING_OPEN },
+      { status: "failed", card: "lost", answer: NOTHING_OPEN },
+      { status: "cancelled", card: "seen", answer: NOTHING_OPEN },
+      { status: "cancelled", card: "unseen", answer: NOTHING_OPEN },
+      { status: "cancelled", card: "lost", answer: NOTHING_OPEN },
+      { status: "expired", card: "seen", answer: NOTHING_OPEN },
+      { status: "expired", card: "unseen", answer: NOTHING_OPEN },
+      { status: "expired", card: "lost", answer: NOTHING_OPEN },
     ]);
   });
 
   test("a status read reports a save only for a saved draft and names the draft it read", () => {
     const reads = draftStatus.enumValues.map(
-      (status) => [status, draftCheck({ status, summary: "Catat 2 Americano" })] as const,
+      (status) =>
+        [status, draftCheck({ status, summary: "Catat 2 Americano", card: "seen" })] as const,
     );
 
     expect(reads.map(([status, read]) => [status, read.status, read.summary])).toEqual([
@@ -84,6 +86,13 @@ describe("the confirm rule every draft port shares", () => {
     ]);
     expect(reads[0]?.[1].message).toContain("belum tersimpan");
     expect(draftCheck(null)).toMatchObject({ status: "none", summary: null });
+
+    // An open draft whose card never arrived is not one the owner can check and answer.
+    expect(draftCheck({ status: "pending", summary: "Catat 2 Americano", card: "lost" })).toEqual({
+      status: "none",
+      message: expect.stringContaining("tidak sampai"),
+      summary: "Catat 2 Americano",
+    });
   });
 });
 
@@ -218,16 +227,15 @@ describe.if(integration)("deciding drafts", () => {
     expect(await chatRows()).toBe(before + 1);
   });
 
-  test("a typed ya runs a draft only when its card went out before the owner wrote it", async () => {
+  test("a typed ya waits for a card that went out after the owner wrote or is still queued", async () => {
     const before = await chatRows();
-    const afterNow = (ms: number) => new Date(NOW.getTime() + ms);
 
     // Typed while the turn was still answering: the card left 10 s after the "ya".
     const raced = await draftSale();
 
-    await sendCard(raced.draftId, { sentAt: afterNow(10_000) });
+    await sendCard(raced.draftId, { sentAt: new Date(NOW.getTime() + 10_000) });
 
-    expect(await portAt(NEXT, afterNow(5_000)).confirmOpen()).toEqual(DRAFT_UNSEEN);
+    expect(await portAt(NEXT, new Date(NOW.getTime() + 5_000)).confirmOpen()).toEqual(DRAFT_UNSEEN);
 
     // Still in the outbox while its send is retried.
     const queued = await draftSale();
@@ -235,29 +243,65 @@ describe.if(integration)("deciding drafts", () => {
     await sendCard(queued.draftId, "queued");
 
     expect(await portAt(NEXT).confirmOpen()).toEqual(DRAFT_UNSEEN);
+    expect(await statusOf(queued.draftId)).toBe("pending");
+    expect(await chatRows()).toBe(before);
+  });
 
-    // Its turn died before the card was committed, or the send failed for good.
-    await draftSale();
-
-    expect(await portAt(NEXT).confirmOpen()).toEqual(CARD_LOST);
-
+  test("a card whose send failed reads as lost to a typed ya and to a status question", async () => {
+    const before = await chatRows();
     const failed = await draftSale();
 
     await sendCard(failed.draftId, "failed");
 
-    expect(await portAt(NEXT).confirmOpen()).toEqual(CARD_LOST);
+    const nextTurn = portAt(NEXT);
 
-    // Without the time the owner wrote, nothing shows the card came first.
-    const sent = await draftSale();
-
-    await sendCard(sent.draftId);
-
-    const unknownTime = dbDraftPort(db, { businessId, traceId: crypto.randomUUID(), now: NEXT });
-
-    expect(await unknownTime.confirmOpen()).toEqual(DRAFT_UNSEEN);
+    expect(await nextTurn.confirmOpen()).toEqual(CARD_LOST);
+    expect(await nextTurn.checkLatest()).toMatchObject({
+      status: "none",
+      message: expect.stringContaining("tidak sampai"),
+    });
     expect(await chatRows()).toBe(before);
-    expect(await statusOf(sent.draftId)).toBe("pending");
+  });
+
+  test("a run that died before answering is undone, and the card it took over is open again", async () => {
+    const before = await chatRows();
+    const seen = await draftSale();
+
+    await sendCard(seen.draftId);
+
+    const dead = await draftSale(NEXT, portAt(NEXT), "Catat 1 Kopi Tubruk");
+
+    expect(dead.replaced).toBe("Catat 2 Americano");
+    expect(await statusOf(seen.draftId)).toBe("cancelled");
+
+    await undoDeadRun(db, { businessId, now: NEXT });
+
+    expect(await statusOf(dead.draftId)).toBeUndefined();
+    expect(await statusOf(seen.draftId)).toBe("pending");
+
+    // A draft whose card was committed belongs to a run that answered.
+    await undoDeadRun(db, { businessId, now: NEXT });
+
+    expect(await statusOf(seen.draftId)).toBe("pending");
     expect(await portAt(NEXT).confirmOpen()).toMatchObject({ status: "done" });
+    expect(await chatRows()).toBe(before + 1);
+  });
+
+  test("a ya retried after its run died hears the save that run made, not a lost card", async () => {
+    const before = await chatRows();
+    const seen = await draftSale();
+
+    await sendCard(seen.draftId);
+
+    // The run answering "ya, tambah 1 kopi tubruk" saved the card and drafted again, then died.
+    const dead = portAt(NEXT);
+
+    expect(await dead.confirmOpen()).toMatchObject({ status: "done" });
+
+    await draftSale(NEXT, dead, "Catat 1 Kopi Tubruk");
+    await undoDeadRun(db, { businessId, now: NEXT });
+
+    expect(await portAt(NEXT).confirmOpen()).toEqual(SAVED_BEFORE);
     expect(await chatRows()).toBe(before + 1);
   });
 

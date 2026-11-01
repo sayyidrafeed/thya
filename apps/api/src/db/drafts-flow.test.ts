@@ -10,6 +10,7 @@ import { fakeGraph, textMessage } from "../channels/whatsapp/testing";
 import { handleAgentTurn } from "../jobs/agent-turn";
 import { createPhoneBusiness } from "../modules/business";
 import { recordInbound } from "../modules/conversation";
+import { createDraft } from "../modules/drafts";
 import { demoBusiness } from "../sales/demo-shop";
 import { loadSalesDataset, seedDemoSales } from "../sales/repository";
 import { summarizeSales } from "../sales/report";
@@ -516,6 +517,31 @@ describe.if(integration)("drafts over WhatsApp", () => {
 
     expect(read.sent.map((body) => body.text.body)).toEqual(["Sudah dicatat, Kak."]);
     expect(await statusOf(cardDraft)).toBe("done");
+    expect(await chatRows()).toBe(before + 1);
+  });
+
+  test("a tap on a card that a dead run took over still saves it, and the dead run leaves no draft", async () => {
+    const before = await chatRows();
+    const { cardDraft } = delivered((await say("tadi laku 2 americano", recordTwoAmericano)).sent);
+
+    // A run answering the owner's next message drafted over the card, then died before replying.
+    const dead = await createDraft(db, {
+      businessId,
+      kind: "sales.record",
+      args: {},
+      summary: "Catat 1 Kopi Tubruk",
+      traceId: crypto.randomUUID(),
+      now: later(),
+    });
+
+    expect(dead.replaced?.id).toBe(cardDraft);
+
+    const tapped = await press("Ya", `draft:${cardDraft}:yes`);
+
+    expect(tapped.sent.map((body) => body.text.body)).toEqual([
+      expect.stringContaining("Sudah dicatat, Kak: 2 Americano"),
+    ]);
+    expect(await statusOf(dead.draft.id)).toBeUndefined();
     expect(await chatRows()).toBe(before + 1);
   });
 });

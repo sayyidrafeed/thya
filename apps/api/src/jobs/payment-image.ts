@@ -1,5 +1,4 @@
 import type { LanguageModel } from "ai";
-import { dbDraftPort } from "../actions";
 import type { DraftRequest } from "../actions/kinds";
 import { REPLACED_LINE, type TurnDraft } from "../agent";
 import { WhatsAppError, type WhatsAppClient } from "../channels/whatsapp/client";
@@ -10,6 +9,7 @@ import {
   planChannelImport,
   storedChannelSales,
 } from "../modules/channel-sales";
+import { createDraft } from "../modules/drafts";
 import {
   EXTRACTION_REPLIES,
   extractPayments,
@@ -64,11 +64,11 @@ async function cardFor(
   request: DraftRequest,
   note: string,
 ): Promise<PaymentImageResult> {
-  const { draftId, replaced } = await dbDraftPort(deps.db, at).create(request);
+  const { draft, replaced } = await createDraft(deps.db, { ...at, ...request });
 
   return {
     reply: replaced === null ? READ_CARD : `${READ_CARD}\n${REPLACED_LINE}`,
-    draft: { draftId, summary: request.summary },
+    draft: { draftId: draft.id, summary: request.summary },
     note,
   };
 }

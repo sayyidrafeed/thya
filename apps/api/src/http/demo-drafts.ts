@@ -58,7 +58,7 @@ function latestIn(parts: ToolPart[]): LatestDraft | null {
         SETTLING_OUTCOMES.includes(output.outcome),
     );
 
-  return { status: settledAs(decision), summary: draft.summary, cardSent: "before" };
+  return { status: settledAs(decision), summary: draft.summary, card: "seen" };
 }
 
 // The web demo stores nothing and every visitor shares one demo shop, so its drafts live in the
@@ -81,15 +81,13 @@ export function demoDraftPort(messages: UIMessage[]): DraftPort {
     create: async ({ summary }) => {
       const draftId = crypto.randomUUID();
 
-      tookOver =
-        latest?.status === "pending" && latest.cardSent === "before" ? latest.summary : tookOver;
-      latest = { status: "pending", summary, cardSent: "after" };
+      tookOver = latest?.status === "pending" && latest.card === "seen" ? latest.summary : tookOver;
+      latest = { status: "pending", summary, card: "unseen" };
       made = { draftId, summary };
 
       return { draftId, replaced: tookOver };
     },
-    endTurn: async () =>
-      latest?.status === "pending" && latest.cardSent === "after" ? made : null,
+    endTurn: async () => (latest?.status === "pending" && latest.card === "unseen" ? made : null),
     listSchedules: async () => [],
     // The same rule as dbDraftPort, with demo wording: nothing here is really stored.
     confirmOpen: async () => {
