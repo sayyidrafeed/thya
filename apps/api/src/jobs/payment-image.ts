@@ -142,6 +142,7 @@ function settlementReply(settlement: {
   ].join("\n");
 }
 
+// `signal`: the job attempt's; once pg-boss has failed it, the extraction call stops.
 export async function readPaymentImage(
   deps: PaymentImageDeps,
   {
@@ -150,7 +151,15 @@ export async function readPaymentImage(
     now,
     traceId,
     imports,
-  }: { businessId: string; mediaId: string; now: Date; traceId: string; imports: ImageImports },
+    signal,
+  }: {
+    businessId: string;
+    mediaId: string;
+    now: Date;
+    traceId: string;
+    imports: ImageImports;
+    signal?: AbortSignal;
+  },
 ): Promise<PaymentImageResult> {
   let image: Awaited<ReturnType<WhatsAppClient["downloadImage"]>>;
 
@@ -178,6 +187,7 @@ export async function readPaymentImage(
     mediaType: image.mediaType,
     today,
     delivery: imports.delivery,
+    abortSignal: signal,
   });
 
   if (extraction.status === "delivery_sales")

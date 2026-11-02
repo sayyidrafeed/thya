@@ -56,10 +56,18 @@ async function send(delivery: Delivery, payload: OutboundPayload): Promise<strin
 
 // Sends every pending row for this number in order. A retryable failure (429, 5xx, network) throws
 // so the job retries with the row still pending; any other failure is recorded and skipped.
-export async function deliverPending(delivery: Delivery, to: string): Promise<number> {
+// `signal`: the job attempt's; once pg-boss has failed it, the next attempt sends the rest.
+export async function deliverPending(
+  delivery: Delivery,
+  to: string,
+  signal?: AbortSignal,
+): Promise<number> {
   let sent = 0;
 
   for (const { id, payload } of await pendingOutbound(delivery.db, to)) {
+    // Between sends only: a send in flight may already be with Meta, so it finishes and is marked.
+    signal?.throwIfAborted();
+
     try {
       const wamid = await send(delivery, payload);
       await markOutbound(delivery.db, id, { status: "sent", wamid, sentAt: delivery.now() });

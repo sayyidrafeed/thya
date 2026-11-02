@@ -96,8 +96,12 @@ export async function startJobs(boss: PgBoss, deps: JobDeps) {
       if (!job) return;
 
       try {
-        await handleAgentTurn({ ...agentTurn, compact }, job.data.phone);
+        await handleAgentTurn({ ...agentTurn, compact, signal: job.signal }, job.data.phone);
       } catch (error) {
+        // pg-boss already failed this attempt and no longer waits on it (harness §4).
+        if (job.signal.aborted)
+          return console.error(`agent-turn attempt ${job.retryCount}: stopped, pg-boss failed it`);
+
         // A failed job would hold back this number's later messages for good (key_strict_fifo),
         // so the last attempt gives up quietly; the unanswered rows join the next message's batch.
         if (job.retryCount < AGENT_TURN_RETRIES) throw error;
