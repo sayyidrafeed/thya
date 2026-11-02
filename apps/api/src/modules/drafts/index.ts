@@ -195,9 +195,14 @@ export async function cancelTurnDrafts(
 }
 
 // A run that never committed its card showed no drafts: delete them, reopen what they took over.
+// `reopenedFor`: a message of the batch replaying that run, unprocessed until a turn answers it.
 export async function undoTurnDrafts(
   db: Db,
-  { businessId, traceId }: { businessId: string; traceId: string },
+  {
+    businessId,
+    traceId,
+    reopenedFor,
+  }: { businessId: string; traceId: string; reopenedFor: string },
 ) {
   await db.transaction(async (tx) => {
     const undone = await tx
@@ -215,7 +220,7 @@ export async function undoTurnDrafts(
 
     await tx
       .update(drafts)
-      .set({ status: "pending", decidedAt: null, outcome: null })
+      .set({ status: "pending", decidedAt: null, outcome: { reopenedFor } })
       .where(
         and(
           eq(drafts.businessId, businessId),
@@ -227,6 +232,23 @@ export async function undoTurnDrafts(
         ),
       );
   });
+}
+
+// A failed turn's batch is never replayed, so cards reopened for any of its messages close again.
+export async function closeReopenedDrafts(
+  db: Db,
+  { businessId, wamids, now }: { businessId: string; wamids: string[]; now: Date },
+) {
+  await db
+    .update(drafts)
+    .set({ status: "cancelled", decidedAt: now })
+    .where(
+      and(
+        eq(drafts.businessId, businessId),
+        eq(drafts.status, "pending"),
+        inArray(sql`${drafts.outcome}->>'reopenedFor'`, wamids),
+      ),
+    );
 }
 
 // An answered turn sends one card (Q1), for its newest open draft; others it made had no card.

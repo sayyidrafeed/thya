@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { cardKey } from "../actions";
 import { REPLACED_LINE } from "../agent";
 import { scriptedModel, type ScriptStep } from "../agent/testing";
 import { createWhatsAppClient } from "../channels/whatsapp/client";
@@ -6,13 +8,13 @@ import type { WebhookMessage } from "../channels/whatsapp/inbound";
 import { fakeGraph } from "../channels/whatsapp/testing";
 import { handleAgentTurn } from "../jobs/agent-turn";
 import { createPhoneBusiness } from "../modules/business";
-import { recordInbound } from "../modules/conversation";
+import { markOutbound, recordInbound } from "../modules/conversation";
 import { demoBusiness } from "../sales/demo-shop";
 import { summarizeSales } from "../sales/report";
 import { loadSalesDataset, seedDemoSales } from "../sales/repository";
 import { computeMetric } from "../semantic/metrics";
 import type { Db } from "./client";
-import { payments } from "./schema";
+import { outboundMessages, payments } from "./schema";
 import { freshTestDb, integration } from "./testing";
 
 const NOW = new Date("2026-10-25T14:00:00+07:00");
@@ -206,6 +208,55 @@ describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
     expect(sent.map((body) => body.type)).toEqual(["text", "interactive"]);
     expect(sent[0].text.body).toBe(
       `Thya sudah baca screenshotnya. Cek dulu ya Kak, lalu tekan Ya, Ubah, atau Batal.\n${REPLACED_LINE}`,
+    );
+  });
+
+  test("a screenshot over a sale card that never reached the owner does not call that card gone", async () => {
+    const typed: WebhookMessage = {
+      from: OWNER,
+      id: `wamid.p${++wamid}`,
+      timestamp: "1",
+      type: "text",
+      text: { body: "tadi laku 2 americano" },
+    };
+
+    const asked = await send(
+      [typed],
+      [
+        {
+          tool: "recordSales",
+          input: { day: "today", date: null, items: [{ menuName: "americano", quantity: 2 }] },
+        },
+        { text: "Cek dulu ya Kak, lalu jawab ya, ubah, atau batal." },
+      ],
+    );
+
+    const draftId = asked
+      .find((body) => body.type === "interactive")
+      .interactive.action.buttons[0].reply.id.split(":")[1];
+
+    const [card] = await db
+      .select({ id: outboundMessages.id })
+      .from(outboundMessages)
+      .where(eq(outboundMessages.idempotencyKey, cardKey(draftId)));
+
+    // The card's send failed for good, so the owner never had it.
+    await markOutbound(db, card?.id ?? "", { status: "failed", error: "131026: undeliverable" });
+
+    const other = {
+      ...history,
+      transactions: history.transactions.map((row) => ({ ...row, day: 21, reference: null })),
+    };
+
+    const sent = await send(
+      [image()],
+      [{ tool: "recordExtraction", input: other }, { text: "ok" }],
+      new Uint8Array([137, 80, 78, 71, 6, 6, 6]),
+    );
+
+    expect(sent.map((body) => body.type)).toEqual(["text", "interactive"]);
+    expect(sent[0].text.body).toBe(
+      "Thya sudah baca screenshotnya. Cek dulu ya Kak, lalu tekan Ya, Ubah, atau Batal.",
     );
   });
 });

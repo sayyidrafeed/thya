@@ -18,7 +18,7 @@ import { COMPACTION_THRESHOLD_CHARS } from "./compaction";
 import { readPaymentImage } from "./payment-image";
 import type { Db } from "../db/client";
 import { findBusinessByPhone, type Business } from "../modules/business";
-import { cancelTurnDrafts } from "../modules/drafts";
+import { cancelTurnDrafts, closeReopenedDrafts } from "../modules/drafts";
 import {
   commitTurn,
   countInboundSince,
@@ -399,9 +399,12 @@ async function answer(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const durationMs = Date.now() - started;
+      const now = deps.now();
 
-      // Cancelled, not undone: the batch is never replayed, so the card it took over stays closed.
-      await cancelTurnDrafts(deps.db, { businessId: business.id, traceId, now: deps.now() });
+      // Cancelled, not undone: the batch is never replayed, so a card it took over stays closed,
+      // and so does one a dead run of it took over, whichever attempt reopened that card.
+      await cancelTurnDrafts(deps.db, { businessId: business.id, traceId, now });
+      await closeReopenedDrafts(deps.db, { businessId: business.id, wamids, now });
 
       await recordFailedTurn(deps.db, {
         traceId,
@@ -552,7 +555,7 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
   if (lastWamid) await delivery.client.markRead(lastWamid).catch(() => {});
 
   // A dead run showed the owner none of its drafts, so they go before a tap or the model reads them.
-  await undoDeadRun(db, { businessId: business.id, now });
+  await undoDeadRun(db, { businessId: business.id, now, reopenedFor: oldest.wamid });
 
   const batch = await readBatch(deps, business, current);
 

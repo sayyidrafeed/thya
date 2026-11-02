@@ -153,13 +153,20 @@ export async function createCardDraft(db: Db, draft: NewDraft) {
   return card?.status === "failed" ? { ...created, replaced: null } : created;
 }
 
-// Safe only at job start: with one job per phone, an open draft without a card is a dead run's.
-export async function undoDeadRun(db: Db, at: { businessId: string; now: Date }) {
+// Run before this job drafts: with one job per phone, an open draft without a card is a dead run's.
+export async function undoDeadRun(
+  db: Db,
+  at: { businessId: string; now: Date; reopenedFor: string },
+) {
   const open = await openDraft(db, at.businessId, at.now);
 
   if (open === null || (await outboundState(db, cardKey(open.id))) !== null) return;
 
-  await undoTurnDrafts(db, { businessId: at.businessId, traceId: open.traceId });
+  await undoTurnDrafts(db, {
+    businessId: at.businessId,
+    traceId: open.traceId,
+    reopenedFor: at.reopenedFor,
+  });
 
   // A dead job drafts once per screenshot, each its own trace, and undoing one reopens the one before.
   await undoDeadRun(db, at);

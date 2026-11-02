@@ -28,6 +28,9 @@ const NOW = new Date("2026-10-25T14:00:00+07:00");
 // The owner's next message, a minute after the card went out with the reply.
 const NEXT = new Date(NOW.getTime() + 60_000);
 
+// The job replaying a dead run's batch marks what it reopens with a message of that batch.
+const REPLAY = { now: NEXT, reopenedFor: "wamid.next" };
+
 const CARD_VIEWS = ["seen", "unseen", "lost"] as const satisfies readonly CardView[];
 
 describe("the confirm rule every draft port shares", () => {
@@ -280,13 +283,13 @@ describe.if(integration)("deciding drafts", () => {
     expect(dead.replaced).toBe("Catat 2 Americano");
     expect(await statusOf(seen.draftId)).toBe("cancelled");
 
-    await undoDeadRun(db, { businessId, now: NEXT });
+    await undoDeadRun(db, { businessId, ...REPLAY });
 
     expect(await statusOf(dead.draftId)).toBeUndefined();
     expect(await statusOf(seen.draftId)).toBe("pending");
 
     // A draft whose card was committed belongs to a run that answered.
-    await undoDeadRun(db, { businessId, now: NEXT });
+    await undoDeadRun(db, { businessId, ...REPLAY });
 
     expect(await statusOf(seen.draftId)).toBe("pending");
     expect(await portAt(NEXT).confirmOpen()).toMatchObject({ status: "done" });
@@ -302,7 +305,7 @@ describe.if(integration)("deciding drafts", () => {
     const first = await draftSale(NEXT, portAt(NEXT), "Catat 1 Kopi Tubruk");
     const second = await draftSale(NEXT, portAt(NEXT), "Catat 1 Cappuccino");
 
-    await undoDeadRun(db, { businessId, now: NEXT });
+    await undoDeadRun(db, { businessId, ...REPLAY });
 
     expect(await statusOf(first.draftId)).toBeUndefined();
     expect(await statusOf(second.draftId)).toBeUndefined();
@@ -321,7 +324,7 @@ describe.if(integration)("deciding drafts", () => {
     expect(await dead.confirmOpen()).toMatchObject({ status: "done" });
 
     await draftSale(NEXT, dead, "Catat 1 Kopi Tubruk");
-    await undoDeadRun(db, { businessId, now: NEXT });
+    await undoDeadRun(db, { businessId, ...REPLAY });
 
     expect(await portAt(NEXT).confirmOpen()).toEqual(SAVED_BEFORE);
     expect(await chatRows()).toBe(before + 1);

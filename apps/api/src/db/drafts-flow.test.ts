@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { undoDeadRun } from "../actions";
 import { DRAFT_UNSEEN } from "../actions/kinds";
 import { REPLACED_LINE } from "../agent";
 import { saveClaims } from "../agent/postcheck";
@@ -593,5 +594,90 @@ describe.if(integration)("drafts over WhatsApp", () => {
 
     expect(await statusOf(cardDraft)).toBe("cancelled");
     expect(await chatRows()).toBe(before);
+  });
+
+  test("a retry that fails after a dead run keeps the card that run took over closed for a later iya", async () => {
+    const before = await chatRows();
+    const { cardDraft } = delivered((await say("tadi laku 2 americano", recordTwoAmericano)).sent);
+
+    // The run answering the correction drafted over the card and died; the retry's model call fails.
+    await createDraft(db, {
+      businessId,
+      kind: "sales.record",
+      args: {},
+      summary: "Catat 3 Americano",
+      traceId: crypto.randomUUID(),
+      now: later(),
+    });
+
+    const retried = await say("eh bukan 2, 3 americano");
+
+    expect(retried.sent.map((body) => body.text.body)).toEqual([REPLIES.failed]);
+
+    await say("iya", [{ tool: "confirmDraft", input: {} }, { text: "Baik, Kak." }]);
+
+    expect(await statusOf(cardDraft)).toBe("cancelled");
+    expect(await chatRows()).toBe(before);
+  });
+
+  test("a card reopened by a retry that died too stays closed when the next attempt fails", async () => {
+    const before = await chatRows();
+    const { cardDraft } = delivered((await say("tadi laku 2 americano", recordTwoAmericano)).sent);
+    const correction = textMessage(`wamid.t${++wamid}`, "eh bukan 2, 3 americano", OWNER);
+    const at = later();
+
+    // The first run drafted over the card and died; the retry reopened the card, then died as well.
+    await recordInbound(db, [
+      {
+        wamid: correction.id,
+        phone: OWNER,
+        type: correction.type,
+        payload: correction,
+        receivedAt: at,
+      },
+    ]);
+    await createDraft(db, {
+      businessId,
+      kind: "sales.record",
+      args: {},
+      summary: "Catat 3 Americano",
+      traceId: crypto.randomUUID(),
+      now: at,
+    });
+    await undoDeadRun(db, { businessId, now: at, reopenedFor: correction.id });
+
+    expect(await statusOf(cardDraft)).toBe("pending");
+
+    // The third attempt answers the same batch, and its model call fails.
+    const third = await send(correction, [], at);
+
+    expect(third.sent.map((body) => body.text.body)).toEqual([REPLIES.failed]);
+
+    await say("iya", [{ tool: "confirmDraft", input: {} }, { text: "Baik, Kak." }]);
+
+    expect(await statusOf(cardDraft)).toBe("cancelled");
+    expect(await chatRows()).toBe(before);
+  });
+
+  test("a failed turn on a later batch leaves a card reopened for an earlier batch open", async () => {
+    const { cardDraft } = delivered((await say("tadi laku 2 americano", recordTwoAmericano)).sent);
+
+    // The run answering the correction drafted over the card and died; the retry only asks back.
+    await createDraft(db, {
+      businessId,
+      kind: "sales.record",
+      args: {},
+      summary: "Catat 3 Americano",
+      traceId: crypto.randomUUID(),
+      now: later(),
+    });
+    await say("eh bukan 2, 3 americano", [{ text: "Maksudnya jadi 3 Americano ya, Kak?" }]);
+
+    expect(await statusOf(cardDraft)).toBe("pending");
+
+    const failed = await say("omzet hari ini berapa?");
+
+    expect(failed.sent.map((body) => body.text.body)).toEqual([REPLIES.failed]);
+    expect(await statusOf(cardDraft)).toBe("pending");
   });
 });
