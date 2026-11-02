@@ -100,6 +100,19 @@ Fakta yang mendasari desain ini:
 - Event tidak dijamin berurutan.
 - Pesan beruntun digabung lewat tabel pesan + batch di job, bukan `sendDebounced` milik pg-boss (slotnya tetap, tidak me-reset timer). Pola serupa ada di Vercel chat-sdk (debounce 1,5 detik) dan Kapso (buffer default 5 detik).
 - **Biaya:** template utility di dalam jendela 24 jam mulai berbayar sejak 1 Okt 2026. Tarif Indonesia ada di rate card Meta. Pemilik angka: Indy (business model).
+- pg-boss menggagalkan attempt `agent-turn` yang melewati `expireInSeconds` (180 detik) ke retry, tapi tidak bisa menghentikan handler-nya. Handler itu tetap berjalan di samping attempt berikutnya. Hal yang sama terjadi saat deploy, kalau `boss.stop()` sudah menghabiskan grace 30 detik. Ini diamati dengan pg-boss 12.37.1 di Postgres lokal (2026-11-02).
+
+**Attempt yang sudah digagalkan pg-boss tidak menulis lagi.** Handler menerima `job.signal` lewat `AgentTurnDeps.signal`. Begitu pg-boss meng-abort sinyal itu, attempt tersebut berhenti di titik tulis berikutnya:
+
+- `commitTurn` memeriksa sinyal sebagai langkah terakhir di dalam transaksinya, tepat sebelum COMMIT. Balasan, kartu, riwayat, dan tanda "diproses" milik attempt itu tidak masuk.
+- Jalur giliran gagal tidak membatalkan draft, tidak menutup kartu yang dibuka lagi, dan tidak mengirim permintaan maaf. Batch-nya diulang oleh attempt berikutnya, atau oleh job berikutnya untuk nomor itu kalau ini attempt terakhir, dan run itu memperlakukan draft attempt ini sebagai draft run yang mati (`undoDeadRun`).
+- `undoDeadRun` hanya jalan selama sinyalnya hidup. Attempt yang terlambat sampai ke langkah ini bisa mengira draft attempt berikutnya, yang kartunya belum di-commit, sebagai draft run yang mati.
+- `readBatch` memeriksa sinyal sebelum tiap pesan di batch. Tap Ya sesudah screenshot yang unduhannya tertahan tidak dijalankan attempt itu.
+- `deliverPending` tidak memulai kiriman baru. Kiriman yang sedang berjalan dibiarkan selesai dan ditandai, karena Meta mungkin sudah menerimanya.
+- Panggilan model (`runTurn`) dan ekstraksi screenshot ikut di-abort. Batas 40 dan 45 detiknya tetap berlaku.
+- Event konsep baru ditulis kalau sinyalnya masih hidup. `runTurn` jatuh ke jawaban pertama kalau retry-nya gagal, termasuk karena abort, jadi attempt yang sudah digagalkan bisa sampai ke langkah itu.
+
+Pagar ini bergantung pada urutan di pg-boss. Saat expiry, pg-boss meng-abort sinyal dulu, baru menggagalkan attempt. Saat `stop()`, pg-boss menggagalkan attempt dulu, lalu meng-abort sinyal satu round trip kemudian, dan worker keluar begitu `stop()` selesai. Attempt berikutnya baru bisa diambil setelah retry delay, 5 sampai 10 detik untuk retry pertama dan naik dengan backoff. Setelah attempt terakhir, job berikutnya untuk nomor itu menunggu `releaseBlockedPhones` menghapus job yang gagal. Jadi commit yang lolos cek sinyal sudah masuk sebelum run berikutnya ada. Batas pagar ini ada di `docs/decisions.md` (2026-11-02).
 
 ## 5. Queue: pg-boss
 
@@ -136,8 +149,9 @@ Dari sisi user, chat dengan Thya tidak pernah reset. Di belakangnya ada urutan p
 ## 7. Reliability tanpa fallback
 
 - Validasi Zod di setiap input tool. `repairToolCall` tidak dipakai: di AI SDK 7.0.153, input yang gagal validasi menjadi hasil `tool-error` berisi pesan validasinya, dan model membacanya di langkah berikutnya dalam batas `stopWhen`. Field wajib + nullable (§11) membuat kasus ini jarang. Error domain dari tool dikembalikan sebagai `{ status: "error", message }` yang bisa ditindaklanjuti model.
-- `stopWhen` dibatasi (sekarang 5 langkah). `AbortSignal.timeout` per run.
-- Typing indicator saat job mulai. Pesan "sedang diproses" hanya kalau lewat sekitar 10–15 detik. Setelah timeout, kirim satu pesan maaf, tanpa retry tanpa batas.
+- `stopWhen` dibatasi (sekarang 5 langkah). `AbortSignal.timeout` per run (40 detik) digabung dengan `job.signal`, jadi run juga berhenti saat pg-boss menggagalkan attempt-nya (§4).
+- Typing indicator saat job mulai. Pesan "sedang diproses" hanya kalau lewat sekitar 10–15 detik. Setelah timeout model, kirim satu pesan maaf, tanpa retry tanpa batas. Attempt yang digagalkan pg-boss tidak mengirim maaf, karena batch-nya dijawab run berikutnya (§4).
+- Fetch ke Graph API WhatsApp tidak diberi timeout dan tidak diputus `job.signal`. `client.ts` tidak mengirim kunci idempotensi apa pun ke Meta, jadi kiriman yang diputus padahal sudah diterima Meta bisa terkirim lagi saat job diulang. Attempt yang tertahan fetch melewati `expireInSeconds` tetap tidak bisa menulis lagi (§4).
 - Idempotency key di setiap tool write.
 - Konkurensi dibatasi di sisi aplikasi karena rate limit Netra tidak terdokumentasi.
 - Thinking mode: mati secara default di Netra, jadi masalah `reasoning_content` di API resmi DeepSeek tidak terjadi (lihat §11).
