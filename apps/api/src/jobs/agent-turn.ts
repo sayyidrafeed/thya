@@ -52,6 +52,10 @@ export type AgentTurnDeps = {
   compact?: (businessId: string) => Promise<void>;
   // How long a turn may think before the owner gets a "still working" line; default INTERIM_AFTER_MS.
   interimAfterMs?: number;
+  // pg-boss's job.signal: aborted once pg-boss has failed this attempt (expired, or shut down while
+  // it ran). The batch belongs to the next run from then on, so this one writes nothing more
+  // (harness §4). Absent outside a job.
+  signal?: AbortSignal;
 };
 
 // Meta redelivers a webhook for up to 7 days; anything older than this is answered by code.
@@ -188,6 +192,10 @@ async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundR
   const batch: Batch = { texts: [], answered: [], tainted: false };
 
   for (const row of rows) {
+    // A failed attempt held up on an earlier row (a screenshot download) leaves the rest, taps
+    // included, to the run that replays the batch.
+    deps.signal?.throwIfAborted();
+
     const content = readContent(messageSchema.parse(row.payload));
     const forwarded = "forwarded" in content && content.forwarded;
     const said = (text: string) => (forwarded ? quoteForwarded(text) : text);
@@ -214,6 +222,7 @@ async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundR
           now: deps.now(),
           traceId: newTraceId(),
           imports,
+          signal: deps.signal,
         },
       );
 
@@ -306,7 +315,11 @@ async function runAgent(
     memory: await turnMemory(db, business.id, now),
     deliveryImport: deps.deliveryImport ?? false,
     sheets: deps.sheets ? dbSheetPort(db, business.id, deps.sheets) : undefined,
+    abortSignal: deps.signal,
   });
+
+  // A retry that fails, an abort included, falls back to the first attempt instead of throwing.
+  deps.signal?.throwIfAborted();
 
   await appendConceptEvents(
     db,
@@ -348,8 +361,9 @@ async function sendInterim(
       wamids: [],
       history: [],
       outbound: textOutbound(phone, `interim:${wamid}`, REPLIES.interim),
+      signal: deps.signal,
     });
-    await deliverPending(deps.delivery, phone);
+    await deliverPending(deps.delivery, phone, deps.signal);
     await deps.delivery.client.markRead(wamid).catch(() => {});
   } catch (error) {
     console.error("interim reply failed:", error instanceof Error ? error.message : error);
@@ -397,6 +411,10 @@ async function answer(
         },
       );
     } catch (error) {
+      // pg-boss failed this attempt, so the batch is replayed rather than apologised for, and the
+      // run that replays it undoes these drafts as a dead run's.
+      if (deps.signal?.aborted) throw error;
+
       const message = error instanceof Error ? error.message : String(error);
       const durationMs = Date.now() - started;
       const now = deps.now();
@@ -430,6 +448,7 @@ async function answer(
         wamids,
         history: [],
         outbound: textOutbound(phone, key, REPLIES.failed),
+        signal: deps.signal,
       });
 
       return;
@@ -448,6 +467,7 @@ async function answer(
       wamids,
       history: [owner, ...turn.responseMessages],
       outbound,
+      signal: deps.signal,
     });
 
     const durationMs = Date.now() - started;
@@ -478,10 +498,10 @@ async function answer(
 // One job per phone at a time (queue policy key_strict_fifo). Every message that arrived during
 // the 3-second buffer is answered as one batch (harness §4).
 export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
-  const { db, delivery } = deps;
+  const { db, delivery, signal } = deps;
 
   // Leftovers from a run that committed but crashed before sending go out first.
-  await deliverPending(delivery, phone);
+  await deliverPending(delivery, phone, signal);
 
   const rows = await unprocessedInbound(db, phone);
 
@@ -504,13 +524,14 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
       wamids: stale.map((row) => row.wamid),
       history: [],
       outbound: textOutbound(phone, `stale:${stale.at(-1)?.wamid}`, REPLIES.stale),
+      signal,
     });
 
   const current = rows.filter((row) => !stale.includes(row));
   const [oldest] = current;
 
   if (oldest === undefined) {
-    await deliverPending(delivery, phone);
+    await deliverPending(delivery, phone, signal);
 
     return;
   }
@@ -524,9 +545,10 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
       wamids,
       history: [],
       outbound: textOutbound(phone, key, text),
+      signal,
     });
 
-    await deliverPending(delivery, phone);
+    await deliverPending(delivery, phone, signal);
   };
 
   if (business === null) return reply(`unregistered:${phone}:${day}`, REPLIES.unregistered);
@@ -539,6 +561,7 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
       wamids,
       history: [],
       outbound: [],
+      signal,
     });
 
     return;
@@ -553,6 +576,10 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
 
   // Read receipt + typing indicator are courtesy; a failure must not cost the reply.
   if (lastWamid) await delivery.client.markRead(lastWamid).catch(() => {});
+
+  // Only while pg-boss still holds this attempt: a failed one that got here late would take the
+  // next attempt's draft, made before its card, for a dead run's.
+  signal?.throwIfAborted();
 
   // A dead run showed the owner none of its drafts, so they go before a tap or the model reads them.
   await undoDeadRun(db, { businessId: business.id, now, reopenedFor: oldest.wamid });
@@ -572,6 +599,7 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
       ...textOutbound(phone, `tap:${tap.wamid}`, tap.reply),
       ...(tap.card ? [draftCard(phone, tap.card)] : []),
     ]),
+    signal,
   });
 
   // The batch's oldest message: a typed "ya" in it counts only for a card that went out before it.
@@ -585,5 +613,5 @@ export async function handleAgentTurn(deps: AgentTurnDeps, phone: string) {
       ownerWroteAt: oldest.receivedAt,
     });
 
-  await deliverPending(delivery, phone);
+  await deliverPending(delivery, phone, signal);
 }

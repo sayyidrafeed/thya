@@ -251,7 +251,11 @@ export async function extractPayments(
       },
       toolChoice: { type: "tool", toolName: "recordExtraction" },
       maxRetries: 1,
-      abortSignal: options.abortSignal ?? AbortSignal.timeout(45_000),
+      // A caller's signal can only end the call sooner; it never lifts the 45 s budget.
+      abortSignal: AbortSignal.any([
+        AbortSignal.timeout(45_000),
+        ...(options.abortSignal ? [options.abortSignal] : []),
+      ]),
     });
   } catch (error) {
     console.error("payment extraction failed:", error instanceof Error ? error.message : error);

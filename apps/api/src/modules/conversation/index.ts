@@ -241,10 +241,12 @@ export type TurnCommit = {
   wamids: string[];
   history: ModelMessage[];
   outbound: Outbound[];
+  // The job attempt's signal: aborted once pg-boss has failed the attempt making this commit.
+  signal?: AbortSignal;
 };
 
 export async function commitTurn(db: Db, commit: TurnCommit) {
-  const { businessId, traceId, wamids, history, outbound } = commit;
+  const { businessId, traceId, wamids, history, outbound, signal } = commit;
 
   await db.transaction(async (tx) => {
     if (businessId !== null && history.length > 0)
@@ -273,6 +275,10 @@ export async function commitTurn(db: Db, commit: TurnCommit) {
           })),
         )
         .onConflictDoNothing();
+
+    // Last, right before COMMIT: the next attempt starts only after pg-boss's retry delay (5 s or
+    // more), so a commit that passes this check lands before it (harness §4).
+    signal?.throwIfAborted();
   });
 }
 
