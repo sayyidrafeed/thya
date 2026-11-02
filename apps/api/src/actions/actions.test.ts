@@ -1,11 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { drafts, draftStatus, outboundMessages, transactions } from "../db/schema";
 import { freshTestDb, integration } from "../db/testing";
 import { createPhoneBusiness } from "../modules/business";
 import { commitTurn, markOutbound } from "../modules/conversation";
-import { DRAFT_TTL_MS } from "../modules/drafts";
+import {
+  cancelDraft,
+  createDraft,
+  DRAFT_TTL_MS,
+  keepTurnDraft,
+  latestDraft,
+} from "../modules/drafts";
 import { demoBusiness } from "../sales/demo-shop";
 import { loadSalesDataset, seedDemoSales } from "../sales/repository";
 import {
@@ -403,5 +409,65 @@ describe.if(integration)("deciding drafts", () => {
     expect(await over.endTurn()).toEqual({ draftId: retry.draftId, summary: "Catat 2 Americano" });
     expect(await over.cancelOpen()).toMatchObject({ status: "done" });
     expect(await over.endTurn()).toBeNull();
+  });
+
+  // Two parallel tool calls of one turn: the one whose transaction started later committed first.
+  async function parallelDrafts(traceId: string) {
+    const [newer] = await db
+      .insert(drafts)
+      .values({
+        businessId,
+        kind: "sales.record",
+        args: {},
+        summary: "Catat 1 Kopi Tubruk",
+        traceId,
+        expiresAt: new Date(NEXT.getTime() + DRAFT_TTL_MS),
+        createdAt: sql`now() + interval '1 minute'`,
+      })
+      .returning();
+
+    const older = await createDraft(db, {
+      businessId,
+      kind: "sales.record",
+      args: {},
+      summary: "Catat 2 Americano",
+      traceId,
+      now: NEXT,
+    });
+
+    return { newer: newer?.id ?? "", older: older.draft.id };
+  }
+
+  test("a draft never takes over a newer one, so the card a turn keeps is the one a ya finds", async () => {
+    const traceId = crypto.randomUUID();
+
+    try {
+      const { newer, older } = await parallelDrafts(traceId);
+
+      expect(await statusOf(newer)).toBe("pending");
+
+      const kept = await keepTurnDraft(db, { businessId, traceId, now: NEXT });
+
+      expect(kept?.id).toBe(newer);
+      expect(await statusOf(older)).toBe("cancelled");
+      expect((await latestDraft(db, businessId, NEXT))?.id).toBe(newer);
+    } finally {
+      await db.delete(drafts).where(eq(drafts.traceId, traceId));
+    }
+  });
+
+  test("when the model cancels a turn's newest draft, no older draft of that turn gets a card", async () => {
+    const traceId = crypto.randomUUID();
+
+    try {
+      const { newer, older } = await parallelDrafts(traceId);
+
+      await cancelDraft(db, { businessId, draftId: newer, now: NEXT });
+
+      expect(await keepTurnDraft(db, { businessId, traceId, now: NEXT })).toBeNull();
+      expect(await statusOf(older)).toBe("cancelled");
+    } finally {
+      await db.delete(drafts).where(eq(drafts.traceId, traceId));
+    }
   });
 });

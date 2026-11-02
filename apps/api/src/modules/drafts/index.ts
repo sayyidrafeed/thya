@@ -47,6 +47,8 @@ export async function createDraft(
     if (!row) throw new Error("draft insert returned no row");
 
     // `replacedBy` lets undoTurnDrafts reopen the card if this draft's run never commits its card.
+    // Only drafts ranked before this one (now() is its created_at in this transaction), so a parallel
+    // call's newer draft stays the one keepTurnDraft keeps and latestDraft finds.
     const cancelled = await tx
       .update(drafts)
       .set({ status: "cancelled", decidedAt: draft.now, outcome: { replacedBy: row.id } })
@@ -54,7 +56,7 @@ export async function createDraft(
         and(
           eq(drafts.businessId, draft.businessId),
           eq(drafts.status, "pending"),
-          ne(drafts.id, row.id),
+          sql`(${drafts.createdAt}, ${drafts.id}) < (now(), ${row.id}::uuid)`,
         ),
       )
       .returning();
@@ -251,27 +253,22 @@ export async function closeReopenedDrafts(
     );
 }
 
-// An answered turn sends one card (Q1), for its newest open draft; others it made had no card.
+// An answered turn sends one card (Q1), for its newest draft if still open; others it made had no
+// card. If the model cancelled that newest draft, no older one of the turn takes its place.
 export async function keepTurnDraft(
   db: Db,
   { businessId, traceId, now }: { businessId: string; traceId: string; now: Date },
 ): Promise<Draft | null> {
-  const [kept] = await db
+  const [newest] = await db
     .select()
     .from(drafts)
-    .where(
-      and(
-        eq(drafts.businessId, businessId),
-        eq(drafts.traceId, traceId),
-        eq(drafts.status, "pending"),
-      ),
-    )
+    .where(and(eq(drafts.businessId, businessId), eq(drafts.traceId, traceId)))
     .orderBy(...NEWEST_FIRST)
     .limit(1);
 
-  if (kept === undefined) return null;
+  const kept = newest?.status === "pending" ? newest : null;
 
-  await cancelTurnDrafts(db, { businessId, traceId, now, keep: kept.id });
+  await cancelTurnDrafts(db, { businessId, traceId, now, keep: kept?.id });
 
   return kept;
 }
