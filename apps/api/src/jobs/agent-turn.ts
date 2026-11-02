@@ -171,13 +171,13 @@ type InboundRow = Awaited<ReturnType<typeof unprocessedInbound>>[number];
 async function answerTap(
   deps: AgentTurnDeps,
   business: Business,
-  { draftId, action }: { draftId: string; action: string },
+  { draftId, action, wamid }: { draftId: string; action: string; wamid: string },
 ) {
   const where = { businessId: business.id, draftId, now: deps.now(), sheets: deps.sheets };
 
   if (action === "yes") return { reply: (await runDraft(deps.db, where)).message, edit: false };
 
-  const cancelled = await cancelOpenDraft(deps.db, where);
+  const cancelled = await cancelOpenDraft(deps.db, { ...where, tap: wamid });
 
   // "Ubah" = cancel, then the model asks what to change and drafts again (Q1, features §4.3).
   if (action === "edit" && cancelled.status === "done") return { reply: null, edit: true };
@@ -241,7 +241,15 @@ async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundR
       continue;
     }
 
-    const { reply, edit } = await answerTap(deps, business, { draftId, action });
+    // An earlier attempt at this batch committed this tap's reply with its pair in the thread, then
+    // died before the model answered; answering again would add a second pair.
+    if ((await outboundState(deps.db, `tap:${row.wamid}:0`)) !== null) continue;
+
+    const { reply, edit } = await answerTap(deps, business, {
+      draftId,
+      action,
+      wamid: row.wamid,
+    });
 
     if (edit) batch.texts.push(content.title);
 
