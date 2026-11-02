@@ -25,6 +25,7 @@ import {
   historySize,
   loadHistory,
   loadSummary,
+  outboundState,
   quoteForwarded,
   unprocessedInbound,
   type Outbound,
@@ -205,6 +206,10 @@ async function readBatch(deps: AgentTurnDeps, business: Business, rows: InboundR
       if (!imports.payments && !imports.delivery) continue;
 
       batch.tainted = true;
+
+      // An earlier attempt at this batch queued this screenshot's reply and card, then died before
+      // the model answered; reading it again would draft over that card.
+      if ((await outboundState(deps.db, `tap:${row.wamid}:0`)) !== null) continue;
 
       const read = await readPaymentImage(
         { db: deps.db, model: deps.model, client: deps.delivery.client },

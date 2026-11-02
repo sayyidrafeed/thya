@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { MockLanguageModelV4 } from "ai/test";
 import { eq } from "drizzle-orm";
 import { cardKey } from "../actions";
 import { REPLACED_LINE } from "../agent";
 import { scriptedModel, type ScriptStep } from "../agent/testing";
 import { createWhatsAppClient } from "../channels/whatsapp/client";
 import type { WebhookMessage } from "../channels/whatsapp/inbound";
-import { fakeGraph } from "../channels/whatsapp/testing";
-import { handleAgentTurn } from "../jobs/agent-turn";
+import { fakeGraph, textMessage } from "../channels/whatsapp/testing";
+import { handleAgentTurn, type AgentTurnDeps } from "../jobs/agent-turn";
 import { createPhoneBusiness } from "../modules/business";
 import { markOutbound, recordInbound } from "../modules/conversation";
 import { demoBusiness } from "../sales/demo-shop";
@@ -65,12 +66,8 @@ describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
     await db.$client.end();
   });
 
-  async function send(messages: WebhookMessage[], script: ScriptStep[], bytes = picture) {
-    const graph = fakeGraph(new Map([["media-1", bytes]]));
-    const at = new Date((clock += 5 * 60_000));
-    const client = createWhatsAppClient(config, graph.fetcher);
-
-    await recordInbound(
+  const receive = (messages: WebhookMessage[], at: Date) =>
+    recordInbound(
       db,
       messages.map((message) => ({
         wamid: message.id,
@@ -80,18 +77,41 @@ describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
         receivedAt: at,
       })),
     );
-    await handleAgentTurn(
+
+  // One run of the agent-turn job over every message not answered yet; `sent` is what the owner got.
+  function attempt(
+    model: AgentTurnDeps["model"],
+    at: Date,
+    bytes: Uint8Array,
+    interimAfterMs?: number,
+  ) {
+    const graph = fakeGraph(new Map([["media-1", bytes]]));
+    const client = createWhatsAppClient(config, graph.fetcher);
+
+    const done = handleAgentTurn(
       {
         db,
-        model: scriptedModel(script),
+        model,
         delivery: { db, client, loadImage: async () => null, now: () => at },
         now: () => at,
         paymentsImport: true,
+        interimAfterMs,
       },
       OWNER,
     );
 
-    return graph.sent();
+    return { sent: graph.sent, done };
+  }
+
+  async function send(messages: WebhookMessage[], script: ScriptStep[], bytes = picture) {
+    const at = new Date((clock += 5 * 60_000));
+
+    await receive(messages, at);
+
+    const { sent, done } = attempt(scriptedModel(script), at, bytes);
+    await done;
+
+    return sent();
   }
 
   const image = (caption: string | null = null): WebhookMessage => ({
@@ -259,4 +279,79 @@ describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
       "Thya sudah baca screenshotnya. Cek dulu ya Kak, lalu tekan Ya, Ubah, atau Batal.",
     );
   });
+
+  const words = "ini transferan kemarin";
+
+  // Words for the model beside the screenshot, as its caption or as the next message.
+  const batches = [
+    { how: "with a caption", day: 20, messages: () => [image(words)] },
+    {
+      how: "followed by a message",
+      day: 19,
+      messages: () => [image(), textMessage(`wamid.p${++wamid}`, words, OWNER)],
+    },
+  ];
+
+  for (const { how, day, messages } of batches)
+    test(`a screenshot ${how} gets one card when the run dies before the reply`, async () => {
+      const bytes = new Uint8Array([137, 80, 78, 71, day, day, day]);
+
+      const read = {
+        ...history,
+        transactions: history.transactions.map((row) => ({ ...row, day, reference: null })),
+      };
+
+      // The picture reads the same way every time the model is asked.
+      const reader = new MockLanguageModelV4({
+        doGenerate: (options) =>
+          scriptedModel([{ tool: "recordExtraction", input: read }]).doGenerate(options),
+      });
+
+      // Screenshots go to `reader`; the owner's words go to `answer`.
+      const model = (answer: MockLanguageModelV4["doGenerate"]) =>
+        new MockLanguageModelV4({
+          doGenerate: (options) =>
+            options.toolChoice?.type === "tool" ? reader.doGenerate(options) : answer(options),
+        });
+
+      const at = new Date((clock += 5 * 60_000));
+      const thinking = Promise.withResolvers<void>();
+
+      await receive(messages(), at);
+
+      // The process dies (deploy, OOM) while the model thinks about the words. That call never
+      // returns, and the run never gets to say it is still working.
+      const dead = attempt(
+        model(() => {
+          thinking.resolve();
+
+          return new Promise<never>(() => {});
+        }),
+        at,
+        bytes,
+        60 * 60_000,
+      );
+
+      await thinking.promise;
+
+      // pg-boss runs the job again once the dead attempt expires.
+      const replay = attempt(
+        model(scriptedModel([{ text: "Baik, Kak." }]).doGenerate),
+        new Date((clock += 5 * 60_000)),
+        bytes,
+      );
+
+      await replay.done;
+
+      const sent = [...dead.sent(), ...replay.sent()];
+      const cards = sent.filter((body) => body.type === "interactive");
+
+      expect(cards).toHaveLength(1);
+      expect(sent.at(-1).text.body).toBe("Baik, Kak.");
+      expect(reader.doGenerateCalls).toHaveLength(1);
+
+      const saved = await send([tap(cards[0].interactive.action.buttons[0].reply.id)], []);
+
+      expect(saved[0].text.body).toBe("Sudah dicatat, Kak: 3 pembayaran masuk.");
+    });
 });
