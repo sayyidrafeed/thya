@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { MockLanguageModelV4 } from "ai/test";
 import { and, eq } from "drizzle-orm";
 import { undoDeadRun } from "../actions";
 import { DRAFT_UNSEEN } from "../actions/kinds";
@@ -8,15 +9,15 @@ import { scriptedModel, type ScriptStep, type ToolStep } from "../agent/testing"
 import { createWhatsAppClient } from "../channels/whatsapp/client";
 import type { WebhookMessage } from "../channels/whatsapp/inbound";
 import { fakeGraph, textMessage } from "../channels/whatsapp/testing";
-import { handleAgentTurn, REPLIES } from "../jobs/agent-turn";
+import { handleAgentTurn, REPLIES, type AgentTurnDeps } from "../jobs/agent-turn";
 import { createPhoneBusiness } from "../modules/business";
-import { recordInbound } from "../modules/conversation";
+import { loadHistory, recordInbound } from "../modules/conversation";
 import { createDraft } from "../modules/drafts";
 import { demoBusiness } from "../sales/demo-shop";
 import { loadSalesDataset, seedDemoSales } from "../sales/repository";
 import { summarizeSales } from "../sales/report";
 import type { Db } from "./client";
-import { drafts, menuCosts, transactions } from "./schema";
+import { drafts, menuCosts, messages, transactions } from "./schema";
 import { freshTestDb, integration } from "./testing";
 
 const NOW = new Date("2026-10-25T14:00:00+07:00");
@@ -58,6 +59,38 @@ describe.if(integration)("drafts over WhatsApp", () => {
   let clock = NOW.getTime();
   const later = () => new Date((clock += 3 * 60_000));
 
+  const receive = (batch: WebhookMessage[], at: Date) =>
+    recordInbound(
+      db,
+      batch.map((message) => ({
+        wamid: message.id,
+        phone: OWNER,
+        type: message.type,
+        payload: message,
+        receivedAt: at,
+      })),
+    );
+
+  // One run of the agent-turn job over every message not answered yet; `sent` is what the owner got.
+  function attempt(model: AgentTurnDeps["model"], at: Date, interimAfterMs?: number) {
+    const graph = fakeGraph();
+    const client = createWhatsAppClient(config, graph.fetcher);
+
+    const done = handleAgentTurn(
+      {
+        db,
+        model,
+        delivery: { db, client, loadImage: async () => null, now: () => at },
+        now: () => at,
+        paymentsImport: false,
+        interimAfterMs,
+      },
+      OWNER,
+    );
+
+    return { sent: graph.sent, done };
+  }
+
   // `writtenAt`: when the owner wrote it, if earlier than the turn that answers it at `at`.
   async function send(
     message: WebhookMessage,
@@ -65,32 +98,14 @@ describe.if(integration)("drafts over WhatsApp", () => {
     at = later(),
     writtenAt = at,
   ) {
-    const graph = fakeGraph();
     const model = scriptedModel(script);
-    const client = createWhatsAppClient(config, graph.fetcher);
 
-    await recordInbound(db, [
-      {
-        wamid: message.id,
-        phone: OWNER,
-        type: message.type,
-        payload: message,
-        receivedAt: writtenAt,
-      },
-    ]);
+    await receive([message], writtenAt);
 
-    await handleAgentTurn(
-      {
-        db,
-        model,
-        delivery: { db, client, loadImage: async () => null, now: () => at },
-        now: () => at,
-        paymentsImport: false,
-      },
-      OWNER,
-    );
+    const { sent, done } = attempt(model, at);
+    await done;
 
-    return { sent: graph.sent(), model };
+    return { sent: sent(), model };
   }
 
   const say = (text: string, script: ScriptStep[] = [], at = later()) =>
@@ -679,5 +694,86 @@ describe.if(integration)("drafts over WhatsApp", () => {
 
     expect(failed.sent.map((body) => body.text.body)).toEqual([REPLIES.failed]);
     expect(await statusOf(cardDraft)).toBe("pending");
+  });
+
+  // The process dies (deploy, OOM) while the model thinks. That call never returns, and the run
+  // never gets to say it is still working. Returns what that attempt delivered.
+  async function dieThinking(at: Date) {
+    const thinking = Promise.withResolvers<void>();
+
+    const dead = attempt(
+      new MockLanguageModelV4({
+        doGenerate: () => {
+          thinking.resolve();
+
+          return new Promise<never>(() => {});
+        },
+      }),
+      at,
+      60 * 60_000,
+    );
+
+    await thinking.promise;
+
+    return dead.sent;
+  }
+
+  const threadSize = () => db.$count(messages, eq(messages.businessId, businessId));
+  const question = "omzet hari ini berapa?";
+
+  // Words for the model in the tap's batch keep the batch unprocessed after the tap's own commit.
+  for (const { title, button, reply, saved } of [
+    { title: "Ya", button: 0, reply: "Sudah dicatat, Kak: 2 Americano", saved: 1 },
+    { title: "Batal", button: 2, reply: "Oke Kak, dibatalkan. Tidak ada yang disimpan.", saved: 0 },
+  ])
+    test(`a ${title} tap beside a question is answered once when the run dies before the reply`, async () => {
+      const before = await chatRows();
+      const { buttons } = await draftFromCard();
+      const thread = await threadSize();
+      const at = later();
+
+      await receive(
+        [
+          tap(`wamid.b${++wamid}`, title, buttons?.[button] ?? ""),
+          textMessage(`wamid.t${++wamid}`, question, OWNER),
+        ],
+        at,
+      );
+
+      const dead = await dieThinking(at);
+
+      // pg-boss runs the job again once the dead attempt expires.
+      const replay = attempt(scriptedModel([{ text: "Baik, Kak." }]), later());
+      await replay.done;
+
+      expect([...dead(), ...replay.sent()].map((body) => body.text.body)).toEqual([
+        expect.stringContaining(reply),
+        "Baik, Kak.",
+      ]);
+
+      // The tap and code's answer to it go into the thread once, as the owner saw them.
+      expect(
+        (await loadHistory(db, businessId)).slice(-4).map((message) => message.content),
+      ).toEqual([title, expect.stringContaining(reply), question, "Baik, Kak."]);
+      expect(await threadSize()).toBe(thread + 4);
+      expect(await chatRows()).toBe(before + saved);
+    });
+
+  test("an Ubah tap still reaches the model when the run dies before the reply", async () => {
+    const { buttons } = await draftFromCard();
+    const at = later();
+
+    await receive([tap(`wamid.b${++wamid}`, "Ubah", buttons?.[1] ?? "")], at);
+
+    const dead = await dieThinking(at);
+    const model = scriptedModel([{ text: "Mau diubah jadi apa, Kak?" }]);
+    const replay = attempt(model, later());
+    await replay.done;
+
+    expect([...dead(), ...replay.sent()].map((body) => body.text.body)).toEqual([
+      "Mau diubah jadi apa, Kak?",
+    ]);
+    expect(JSON.stringify(model.doGenerateCalls[0]?.prompt.at(-1))).toContain("Ubah");
+    expect(await pendingIds()).toEqual([]);
   });
 });

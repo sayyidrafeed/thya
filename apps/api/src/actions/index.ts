@@ -263,9 +263,14 @@ export async function runDraft(db: Db, run: DraftRun): Promise<DraftOutcome> {
 
 export async function cancelOpenDraft(
   db: Db,
-  { businessId, draftId, now }: { businessId: string; draftId: string; now: Date },
+  {
+    businessId,
+    draftId,
+    now,
+    tap,
+  }: { businessId: string; draftId: string; now: Date; tap?: string },
 ): Promise<DraftOutcome> {
-  if (await cancelDraft(db, { businessId, draftId, now }))
+  if (await cancelDraft(db, { businessId, draftId, now, tap }))
     return { status: "done", message: CANCELLED };
 
   // "Sebutkan lagi" on a saved card would get the same sale recorded twice.

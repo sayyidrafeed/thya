@@ -158,19 +158,43 @@ export async function finishDraft(
     .where(and(eq(drafts.id, draftId), eq(drafts.status, "executing")));
 }
 
+// `tap`: the wamid of the tapped Batal or Ubah, kept on the draft so the same tap answered again
+// (its batch replayed after a dead run) counts the cancel it already made.
 export async function cancelDraft(
   db: Db,
-  { businessId, draftId, now }: { businessId: string; draftId: string; now: Date },
+  {
+    businessId,
+    draftId,
+    now,
+    tap,
+  }: { businessId: string; draftId: string; now: Date; tap?: string },
 ): Promise<boolean> {
+  const thisDraft = and(eq(drafts.id, draftId), eq(drafts.businessId, businessId));
+
   const cancelled = await db
     .update(drafts)
-    .set({ status: "cancelled", decidedAt: now })
-    .where(
-      and(eq(drafts.id, draftId), eq(drafts.businessId, businessId), eq(drafts.status, "pending")),
-    )
+    .set({
+      status: "cancelled",
+      decidedAt: now,
+      outcome: tap === undefined ? undefined : { cancelledBy: tap },
+    })
+    .where(and(thisDraft, eq(drafts.status, "pending")))
     .returning({ id: drafts.id });
 
-  return cancelled.length > 0;
+  if (cancelled.length > 0) return true;
+
+  if (tap === undefined) return false;
+
+  return (
+    (await db.$count(
+      drafts,
+      and(
+        thisDraft,
+        eq(drafts.status, "cancelled"),
+        eq(sql`${drafts.outcome}->>'cancelledBy'`, tap),
+      ),
+    )) > 0
+  );
 }
 
 // Drafts of a turn that sent no card for them (all if it failed, else all but `keep`) never run (Q1).
