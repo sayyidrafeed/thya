@@ -169,7 +169,6 @@ describe("extractPayments", () => {
   test("returns normalized rows from the forced tool call", async () => {
     const model = scriptedModel([
       { tool: "recordExtraction", input: raw([{ reference: "ID X1" }]) },
-      { text: "ok" },
     ]);
 
     const result = await extractPayments(image, {
@@ -185,7 +184,6 @@ describe("extractPayments", () => {
   test("not a transaction, unreadable, and a failing model each give a fixed reply (netra-error)", async () => {
     const notTx = scriptedModel([
       { tool: "recordExtraction", input: { ...raw([]), documentKind: "not_transactions" } },
-      { text: "ok" },
     ]);
 
     const failing = new MockLanguageModelV4({
@@ -239,7 +237,7 @@ describe("extractPayments", () => {
 
     const read = (step: ScriptStep, delivery: boolean) =>
       extractPayments(image, {
-        model: scriptedModel([step, { text: "ok" }]),
+        model: scriptedModel([step]),
         mediaType: "image/png",
         today: TODAY,
         delivery,

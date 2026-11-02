@@ -3,6 +3,7 @@ import { MockLanguageModelV4 } from "ai/test";
 import { eq } from "drizzle-orm";
 import { cardKey } from "../actions";
 import { REPLACED_LINE } from "../agent";
+import { saveClaims } from "../agent/postcheck";
 import { scriptedModel, type ScriptStep } from "../agent/testing";
 import { createWhatsAppClient } from "../channels/whatsapp/client";
 import type { WebhookMessage } from "../channels/whatsapp/inbound";
@@ -15,7 +16,7 @@ import { summarizeSales } from "../sales/report";
 import { loadSalesDataset, seedDemoSales } from "../sales/repository";
 import { computeMetric } from "../semantic/metrics";
 import type { Db } from "./client";
-import { outboundMessages, payments } from "./schema";
+import { drafts, outboundMessages, payments } from "./schema";
 import { freshTestDb, integration } from "./testing";
 
 const NOW = new Date("2026-10-25T14:00:00+07:00");
@@ -47,7 +48,7 @@ const history = {
   unreadableReason: null,
 };
 
-const extraction: ScriptStep[] = [{ tool: "recordExtraction", input: history }, { text: "ok" }];
+const extraction: ScriptStep[] = [{ tool: "recordExtraction", input: history }];
 
 describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
   let db: Db;
@@ -179,19 +180,49 @@ describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
       transactions: history.transactions.map((row) => ({ ...row, day: 23, reference: null })),
     };
 
-    const sent = await send(
-      [image("catat ya")],
-      [
-        { tool: "recordExtraction", input: other },
-        { text: "ok" },
-        { tool: "confirmDraft", input: {} },
-        { text: "Untuk pesan yang ada gambarnya, konfirmasi lewat tombol Ya di kartu ya Kak." },
-      ],
+    // The owner already had this card, so only the taint stops a typed "ya" from saving it.
+    const asked = await send(
+      [image()],
+      [{ tool: "recordExtraction", input: other }],
       new Uint8Array([137, 80, 78, 71, 9, 9, 9]),
     );
 
-    expect(sent.map((body) => body.type)).toContain("interactive");
+    const draftId = asked
+      .find((body) => body.type === "interactive")
+      .interactive.action.buttons[0].reply.id.split(":")[1];
+
+    // Unreadable, so no card of its own takes over the open one.
+    const blurry = {
+      ...history,
+      documentKind: "unreadable",
+      transactions: [],
+      unreadableReason: "buram",
+    };
+
+    const confirm: ScriptStep = { tool: "confirmDraft", input: {} };
+
+    const sent = await send(
+      [image("catat ya")],
+      [
+        { tool: "recordExtraction", input: blurry },
+        confirm,
+        { text: "Sudah aku catat ya Kak." },
+        confirm,
+        { text: "Siap, sudah tercatat." },
+      ],
+      new Uint8Array([137, 80, 78, 71, 8, 8, 8]),
+    );
+
+    const [card] = await db
+      .select({ status: drafts.status })
+      .from(drafts)
+      .where(eq(drafts.id, draftId));
+
     expect(await db.$count(payments)).toBe(3);
+    expect(card?.status).toBe("pending");
+    expect(sent.map((body) => body.type)).toEqual(["text", "text"]);
+    expect(sent[1].text.body).toContain("tombol Ya");
+    expect(saveClaims(sent[1].text.body)).toEqual([]);
   });
 
   test("a screenshot over a sale card the owner had open says in code's words that card is gone", async () => {
@@ -221,7 +252,7 @@ describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
 
     const sent = await send(
       [image()],
-      [{ tool: "recordExtraction", input: other }, { text: "ok" }],
+      [{ tool: "recordExtraction", input: other }],
       new Uint8Array([137, 80, 78, 71, 7, 7, 7]),
     );
 
@@ -270,7 +301,7 @@ describe.if(integration)("payment screenshots (S9, gate G11 on)", () => {
 
     const sent = await send(
       [image()],
-      [{ tool: "recordExtraction", input: other }, { text: "ok" }],
+      [{ tool: "recordExtraction", input: other }],
       new Uint8Array([137, 80, 78, 71, 6, 6, 6]),
     );
 

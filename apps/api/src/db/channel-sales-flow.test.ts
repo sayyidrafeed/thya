@@ -33,7 +33,7 @@ const gobiz = {
   ],
 };
 
-const extraction: ScriptStep[] = [{ tool: "recordExtraction", input: gobiz }, { text: "ok" }];
+const extraction: ScriptStep[] = [{ tool: "recordExtraction", input: gobiz }];
 
 describe.if(integration)("delivery app sales screenshots (DELIVERY_IMPORT_ENABLED on)", () => {
   let db: Db;
